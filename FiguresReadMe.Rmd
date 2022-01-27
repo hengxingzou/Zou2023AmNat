@@ -1,0 +1,791 @@
+---
+title: "ReadMe and Figures"
+author: "Hengxing Zou"
+date: "1/13/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+source("Functions_SpatialBH.R")
+
+```
+
+This document contains code needed to produce all figures in the main text and supporting information of "Mechanisms of Priority Effects Determine Dispersal-Diversity Relationships in Seasonal Metacommunities", as well as a brief readme section. All necessary functions are annotated in the `R` file `Functions_SpatialBH.R`. Before running following code, please make sure that the `R` file and this file are under the same directory.
+
+# Basic Description of the Model
+
+Local population dynamics are described by a modified Beverton-Holt model: 
+
+$$
+
+N_{i}(t+1) = \frac{\lambda_iN_i(t)}{1+\Sigma^n_{j=1}\alpha_{ij}\lambda_{i}N_{j}(t)} + s_iN_i(t)
+
+$$
+
+where population of the next season is determined by density-dependent population growth and the proportion of population surviving into the next generation. Trait-mediated priority effects is allowed by calculating interspecific competition coefficients, $\alpha_{ij}$, as a function of relative time of emergence between two species, $\Delta p_{ij}$:
+
+$$
+
+\alpha_{ij} = \frac{B}{1+\exp({(d-\Delta p_{ij})/c})}
+
+$$
+
+# Relaxing Assumptions in the Main Text
+
+Simulation results of the main text are based on assumptions that each season contains only one generation, dispersal happens once at the end of each season, all species have equal dispersal rates, and no patch undergo extinction. These assumptions can be relaxed by adjusting relevant parameters of the simulation model. Although we do not provide simulation results of these specific situations, we provide full extension in the model that allows for these relaxations.
+
+## Season Length
+
+In seasonal communities, an end-of-season mortality is imposed by the environment to all species. In the main text, we use a simplified model that assumes only one generation per season ($T=1$). Under this assumption, there is no overlapping generations, and the survival $s$ is equivalent to end-of-season survival. However, we design our model to allow for multiple generations per season (as in multivoltine insects; $T>1$). In this case the inter-generational survival ($s$) and end-of-season survival are not the same, the latter requiring a new parameter, $s_e$. Like $s$, we assume that all species have the same $s_e$. In simulations, we keep these values separate, even in scenarios with one generation per season.
+
+## Frequency of Dispersal
+
+We assume dispersal happens only once at the end of the season. In nature, dispersal could happen multiple times throughout the season. We designate this frequency with an integer $f$, and only consider the case of more frequent dispersal when season length is larger than 1 (i.e. multiple generations per season). We fix one dispersal event at the end of the season, and randomly choose $f-1$ time points within the season for the rest of dispersal events. This requires $f-1<T$. Mid-season dispersal follows the same process described in the main text, characterized by dispersal rates $r$ and patches with dispersal $D$. Our model also enable one dispersal event per multiple seasons. In this case, the number of seasons without dispersal ($f_s$) is larger than 1, meaning that dispersal will only happen after $f_s$ seasons, and there will be no dispersal within these seasons.
+
+## Patch Extinction
+
+We assume that no patch within the metacommunity undergo extinction. Our model can simulate the situation when we relax this assumption by setting an additional parameter, number of patches with disturbance ($P_d$), to a nonzero integer. $P_d$ should not be larger than $P$, the number of patches in the metacommunity. At the end of the season, we randomly choose $P_d$ patches and set population of all species in these patches to 0. 
+
+# Code for Producing Figures
+
+## Initial conditions
+
+- Parameters
+
+The following chunk defines necessary parameters for running the simulation. Note that their names could be different from name listed in the main text. 
+
+```{r}
+
+nspp = 5 # number of species; n
+size = 50 # number of patches; P
+init_pop = 50 # initial population; N_0
+
+intra = c(0.08, 0.075, 0.07, 0.065, 0.06) # intraspecific competition coefficients of all speciesp; alpha_ii
+B = 0.225 # asymptotic maximum of the competition-phenology function (Eqn. 2)
+scal = -0.85 # midpoint of the competition-phenology function (Eqn. 2)
+xmid = 0 # midpoint of the competition-phenology function (Eqn. 2)
+
+max_time = 1 # maximum difference in time of emergence; equally partitioned by number of species to 
+             # generate average time of emergence for each species
+var = 4 # seasonal variation of emergence times
+
+lambda = rep(100, nspp) # intrinsic growth rates
+surv = rep(0.5, nspp) # inter-generational survival; s
+end_season_surv = rep(0.2, nspp) # end-of-season survival; s_e
+season_length = 1 # number of generations in a season; T
+n_seasons = 100 # length of simulation
+
+disp_rates = c(0.001, 0.04, 0.1) # dispersal rates; r
+disp_patches = c(10, 20, 30, 40) # number of patches with dispersal; D
+disp_freq = 1 # dispersal frequency withint a season; f
+disp_freq_seasons = 1 # dispersal frequency over seasons; f_s
+
+Pd = 0 # number of patches with disturbance; P_d
+
+```
+
+- Initial Metacommunities
+
+The following chunk initiate metacommunities according to the three scenarios outlined in the main text: 
+Scenario 1: Initial populations are separated across patches;
+Scenario 2: Initial populations are equal across all patches;
+Scenario 3: Initial populations vary randomly across patches.
+We suggest reusing these initial metacommunities for all analyses because they are randomly generated and could lead to different results for each run. 
+
+```{r}
+
+M_1 = init_metacom_each(size, nspp, 50, random = F)
+M_2 = init_metacom(size, nspp, 50, proportion = 1, random = F)
+M_3 = init_metacom(size, nspp, 50, proportion = 1, random = T)
+
+```
+
+We have also supplied initial metacommunities for running our simulations in the main text. To use these, make sure the folder `SavedMetacoms` are under the same directory as this file.
+
+```{r}
+
+M_1 = read.csv("SavedMetacoms/metacom_1.csv") %>% select(-1) %>% as.matrix()
+M_2 = read.csv("SavedMetacoms/metacom_2.csv") %>% select(-1) %>% as.matrix()
+M_3 = read.csv("SavedMetacoms/metacom_3.csv") %>% select(-1) %>% as.matrix()
+
+```
+
+The following chunk provide code for simulating a time series of 100 seasons, with 50 repetitions and four numbers of patches with dispersal. The 24 results correspond to the full factorial of 3 dispersal rates $r$,  4 number of patches with dispersal $D$ and two types of priority effects. The naming of these results follows: type of numeric priority effects-$D$-$r$ (low, medium or high; see Table 1 in the main text). This takes a while.
+
+```{r}
+
+# Choose Scenario
+
+M = M_1
+
+# Numeric priority effects
+
+num_10_low = multiple_reps(M, season_length, n_seasons, rep(disp_rates[1], nspp), disp_patches[1], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_20_low = multiple_reps(M, season_length, n_seasons, rep(disp_rates[1], nspp), disp_patches[2], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_30_low = multiple_reps(M, season_length, n_seasons, rep(disp_rates[1], nspp), disp_patches[3], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_40_low = multiple_reps(M, season_length, n_seasons, rep(disp_rates[1], nspp), disp_patches[4], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+
+num_10_mid = multiple_reps(M, season_length, n_seasons, rep(disp_rates[2], nspp), disp_patches[1], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_20_mid = multiple_reps(M, season_length, n_seasons, rep(disp_rates[2], nspp), disp_patches[2], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_30_mid = multiple_reps(M, season_length, n_seasons, rep(disp_rates[2], nspp), disp_patches[3], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_40_mid = multiple_reps(M, season_length, n_seasons, rep(disp_rates[2], nspp), disp_patches[4], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+
+num_10_high = multiple_reps(M, season_length, n_seasons, rep(disp_rates[3], nspp), disp_patches[1], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_20_high = multiple_reps(M, season_length, n_seasons, rep(disp_rates[3], nspp), disp_patches[2], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_30_high = multiple_reps(M, season_length, n_seasons, rep(disp_rates[3], nspp), disp_patches[3], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+num_40_high = multiple_reps(M, season_length, n_seasons, rep(disp_rates[3], nspp), disp_patches[4], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+
+# Trait-mediated priority effects
+
+tra_10_low = multiple_reps(M, season_length, n_seasons, rep(disp_rates[1], nspp), disp_patches[1], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_20_low = multiple_reps(M, season_length, n_seasons, rep(disp_rates[1], nspp), disp_patches[2], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_30_low = multiple_reps(M, season_length, n_seasons, rep(disp_rates[1], nspp), disp_patches[3], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_40_low = multiple_reps(M, season_length, n_seasons, rep(disp_rates[1], nspp), disp_patches[4], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+
+tra_10_mid = multiple_reps(M, season_length, n_seasons, rep(disp_rates[2], nspp), disp_patches[1], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_20_mid = multiple_reps(M, season_length, n_seasons, rep(disp_rates[2], nspp), disp_patches[2], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_30_mid = multiple_reps(M, season_length, n_seasons, rep(disp_rates[2], nspp), disp_patches[3], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_40_mid = multiple_reps(M, season_length, n_seasons, rep(disp_rates[2], nspp), disp_patches[4], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+
+tra_10_high = multiple_reps(M, season_length, n_seasons, rep(disp_rates[3], nspp), disp_patches[1], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_20_high = multiple_reps(M, season_length, n_seasons, rep(disp_rates[3], nspp), disp_patches[2], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_30_high = multiple_reps(M, season_length, n_seasons, rep(disp_rates[3], nspp), disp_patches[3], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+tra_40_high = multiple_reps(M, season_length, n_seasons, rep(disp_rates[3], nspp), disp_patches[4], disp_freq, disp_freq_seasons,
+                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = Pd)
+
+```
+
+All the following sections, except **Biodiversity: Heatmaps**, uses Scenario 1 as a default and produce figures in the main text. For supplementary figures, rerun the previous chunk with `M_2` or `M_3` for Scenarios 2 and 3, respectively.
+
+## Population Dynamics
+
+The following chunk parses and plot data of population dynamics (Figure 2, Figure S1 and Figure S2 for Scenarios 1, 2 and 3, respectively). These are under 40 patches with dispersal and all three dispersal rates. This takes a while.
+
+```{r}
+
+# Parsing data; this take a while
+
+pop_num_40_low = num_40_low[[1]] %>% met_df_multirep()
+pop_tra_40_low = tra_40_low[[1]] %>% met_df_multirep()
+pop_num_40_mid = num_40_mid[[1]] %>% met_df_multirep()
+pop_tra_40_mid = tra_40_mid[[1]] %>% met_df_multirep()
+pop_num_40_high = num_40_high[[1]] %>% met_df_multirep()
+pop_tra_40_high = tra_40_high[[1]] %>% met_df_multirep()
+
+# Plotting
+
+popA = pop_num_40_low %>% mutate(population = log(population+1)) %>% filter(patch == 5) %>%
+  ggplot(aes(x = time, y = population, color = species, linetype = as.factor(rep))) + scale_color_manual(values = color_scheme) +
+  geom_line() + ylim(0, 4) + scale_linetype_discrete(guide = "none") + theme_bw() + theme(legend.position = "none") +
+  guides(color = guide_legend(title = "Species")) + ylab("log(Population)") + xlab("Seasons") +
+  scale_x_continuous(name = "Seasons", breaks = seq(0, 200, 25)*season_length, label = seq(0, 200, 25)) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("A") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+popB = pop_tra_40_low %>% mutate(population = log(population+1)) %>% filter(patch == 5) %>%
+  ggplot(aes(x = time, y = population, color = species, linetype = as.factor(rep))) + scale_color_manual(values = color_scheme) +
+  geom_line() + ylim(0, 4) + scale_linetype_discrete(guide = "none") + theme_bw() + theme(legend.position = "none") +
+  guides(color = guide_legend(title = "Species")) + ylab("log(Population)") + xlab("Seasons") +
+  scale_x_continuous(name = "Seasons", breaks = seq(0, 200, 25)*season_length, label = seq(0, 200, 25)) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("B") + 
+  theme(axis.text = element_text(size = 15), axis.title = element_blank(), axis.ticks = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+popC = pop_num_40_mid %>% mutate(population = log(population+1)) %>% filter(patch == 5) %>%
+  ggplot(aes(x = time, y = population, color = species, linetype = as.factor(rep))) + scale_color_manual(values = color_scheme) +
+  geom_line() + ylim(0, 4) + scale_linetype_discrete(guide = "none") + theme_bw() + theme(legend.position = "none") +
+  guides(color = guide_legend(title = "Species")) + ylab("log(Population)") + xlab("Seasons") +
+  scale_x_continuous(name = "Seasons", breaks = seq(0, 200, 25)*season_length, label = seq(0, 200, 25)) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("C") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_text(size = 20), axis.ticks = element_blank(), axis.title.x = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+popD = pop_tra_40_mid %>% mutate(population = log(population+1)) %>% filter(patch == 5) %>%
+  ggplot(aes(x = time, y = population, color = species, linetype = as.factor(rep))) + scale_color_manual(values = color_scheme) +
+  geom_line() + ylim(0, 4) + scale_linetype_discrete(guide = "none") + theme_bw() + #theme(legend.position = "none") +
+  guides(color = guide_legend(title = "Species")) + ylab("log(Population)") + xlab("Seasons") +
+  scale_x_continuous(name = "Seasons", breaks = seq(0, 200, 25)*season_length, label = seq(0, 200, 25)) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("D") + 
+  theme(axis.text = element_text(size = 15), axis.ticks = element_blank(), axis.title = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+popE = pop_num_40_high %>% mutate(population = log(population+1)) %>% filter(patch == 5) %>%
+  ggplot(aes(x = time, y = population, color = species, linetype = as.factor(rep))) + scale_color_manual(values = color_scheme) +
+  geom_line() + ylim(0, 4) + scale_linetype_discrete(guide = "none") + theme_bw() + theme(legend.position = "none") +
+  guides(color = guide_legend(title = "Species")) + ylab("log(Population)") + xlab("Seasons") +
+  scale_x_continuous(name = "Seasons", breaks = seq(0, 200, 25)*season_length, label = seq(0, 200, 25)) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("E") + 
+  theme(axis.text = element_text(size = 15), axis.title.x = element_text(size = 20), axis.ticks = element_blank(), axis.title.y = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+popF = pop_tra_40_high %>% mutate(population = log(population+1)) %>% filter(patch == 5) %>%
+  ggplot(aes(x = time, y = population, color = species, linetype = as.factor(rep))) + scale_color_manual(values = color_scheme) +
+  geom_line() + ylim(0, 4) + scale_linetype_discrete(guide = "none") + theme_bw() + theme(legend.position = "none") +
+  guides(color = guide_legend(title = "Species")) + ylab("log(Population)") + xlab("Seasons") +
+  scale_x_continuous(name = "Seasons", breaks = seq(0, 200, 25)*season_length, label = seq(0, 200, 25)) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("F") + 
+  theme(axis.text = element_text(size = 15), axis.title.x = element_text(size = 20), axis.ticks = element_blank(), axis.title.y = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+(popA | popB) / (popC | popD) / (popE | popF) + plot_layout(guides = "collect")
+
+```
+
+## Final Population
+
+This chunk plots final population under all four $D$ (10, 20, 30 and 40, in percentages) and three $r$ (low, medium and high) and produces Figure 3, Figure S3 and Figure S4 for Scenarios 1, 2, and 3, respectively. This should be faster than the previous chunk.
+
+```{r}
+
+# Parsing data
+
+final_pop_num_10_low = num_10_low[[1]] %>% final_pop() %>% mutate(immi_patches = 10)
+final_pop_num_20_low = num_10_low[[1]] %>% final_pop() %>% mutate(immi_patches = 20)
+final_pop_num_30_low = num_10_low[[1]] %>% final_pop() %>% mutate(immi_patches = 30)
+final_pop_num_40_low = num_10_low[[1]] %>% final_pop() %>% mutate(immi_patches = 40)
+
+final_pop_num_10_mid = num_10_mid[[1]] %>% final_pop() %>% mutate(immi_patches = 10)
+final_pop_num_20_mid = num_10_mid[[1]] %>% final_pop() %>% mutate(immi_patches = 20)
+final_pop_num_30_mid = num_10_mid[[1]] %>% final_pop() %>% mutate(immi_patches = 30)
+final_pop_num_40_mid = num_10_mid[[1]] %>% final_pop() %>% mutate(immi_patches = 40)
+
+final_pop_num_10_high= num_10_high[[1]] %>% final_pop() %>% mutate(immi_patches = 10)
+final_pop_num_20_high= num_10_high[[1]] %>% final_pop() %>% mutate(immi_patches = 20)
+final_pop_num_30_high= num_10_high[[1]] %>% final_pop() %>% mutate(immi_patches = 30)
+final_pop_num_40_high= num_10_high[[1]] %>% final_pop() %>% mutate(immi_patches = 40)
+
+final_pop_tra_10_low = num_10_low[[1]] %>% final_pop() %>% mutate(immi_patches = 10)
+final_pop_tra_20_low = num_10_low[[1]] %>% final_pop() %>% mutate(immi_patches = 20)
+final_pop_tra_30_low = num_10_low[[1]] %>% final_pop() %>% mutate(immi_patches = 30)
+final_pop_tra_40_low = num_10_low[[1]] %>% final_pop() %>% mutate(immi_patches = 40)
+
+final_pop_tra_10_mid = num_10_mid[[1]] %>% final_pop() %>% mutate(immi_patches = 10)
+final_pop_tra_20_mid = num_10_mid[[1]] %>% final_pop() %>% mutate(immi_patches = 20)
+final_pop_tra_30_mid = num_10_mid[[1]] %>% final_pop() %>% mutate(immi_patches = 30)
+final_pop_tra_40_mid = num_10_mid[[1]] %>% final_pop() %>% mutate(immi_patches = 40)
+
+final_pop_tra_10_high= num_10_high[[1]] %>% final_pop() %>% mutate(immi_patches = 10)
+final_pop_tra_20_high= num_10_high[[1]] %>% final_pop() %>% mutate(immi_patches = 20)
+final_pop_tra_30_high= num_10_high[[1]] %>% final_pop() %>% mutate(immi_patches = 30)
+final_pop_tra_40_high= num_10_high[[1]] %>% final_pop() %>% mutate(immi_patches = 40)
+
+# Plotting
+
+final_pop_A = bind_rows(final_pop_num_10_low, final_pop_num_20_low, final_pop_num_30_low, final_pop_num_40_low) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = population, fill = species)) + scale_fill_manual(values = color_scheme, guide = "none") + 
+  geom_boxplot() + theme_bw() + ylim(0, 7.5) + guides(fill = guide_legend(title = "Species")) + ylab("log(Total Population)") + xlab("Dispersal Patches") +
+  scale_x_discrete(label = c("20%", "40%", "60%", "80%")) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("A") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+final_pop_B = bind_rows(final_pop_tra_10_low, final_pop_tra_20_low, final_pop_tra_30_low, final_pop_tra_40_low) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = population, fill = species)) + scale_fill_manual(values = color_scheme, guide = "none") + 
+  geom_boxplot() + theme_bw() + ylim(0, 7.5) + guides(fill = guide_legend(title = "Species")) + ylab("log(Total Population)") + xlab("Dispersal Patches") +
+  scale_x_discrete(label = c("20%", "40%", "60%", "80%")) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("B") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+final_pop_C = bind_rows(final_pop_num_10_mid, final_pop_num_20_mid, final_pop_num_30_mid, final_pop_num_40_mid) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = population, fill = species)) + scale_fill_manual(values = color_scheme, guide = "none") + 
+  geom_boxplot() + theme_bw() + ylim(0, 7.5) + guides(fill = guide_legend(title = "Species")) + ylab("log(Total Population)") + xlab("Dispersal Patches") +
+  scale_x_discrete(label = c("20%", "40%", "60%", "80%")) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("C") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_text(size = 20), axis.ticks = element_blank(), axis.title.x = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+final_pop_D = bind_rows(final_pop_tra_10_mid, final_pop_tra_20_mid, final_pop_tra_30_mid, final_pop_tra_40_mid) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = population, fill = species)) + scale_fill_manual(values = color_scheme) + 
+  geom_boxplot() + theme_bw() + ylim(0, 7.5) + guides(fill = guide_legend(title = "Species")) + ylab("log(Total Population)") + xlab("Dispersal Patches") +
+  scale_x_discrete(label = c("20%", "40%", "60%", "80%")) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("D") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+final_pop_E = bind_rows(final_pop_num_10_high, final_pop_num_20_high, final_pop_num_30_high, final_pop_num_40_high) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = population, fill = species)) + scale_fill_manual(values = color_scheme, guide = "none") + 
+  geom_boxplot() + theme_bw() + ylim(0, 7.5) + guides(fill = guide_legend(title = "Species")) + ylab("log(Total Population)") + xlab("Dispersal Patches") +
+  scale_x_discrete(label = c("20%", "40%", "60%", "80%")) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("E") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_text(size = 20),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+final_pop_F = bind_rows(final_pop_tra_10_high, final_pop_tra_20_high, final_pop_tra_30_high, final_pop_tra_40_high) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = population, fill = species)) + scale_fill_manual(values = color_scheme, guide = "none") + 
+  geom_boxplot() + theme_bw() + ylim(0, 7.5) + guides(fill = guide_legend(title = "Species")) + ylab("log(Total Population)") + xlab("Dispersal Patches") +
+  scale_x_discrete(label = c("20%", "40%", "60%", "80%")) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("F") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_text(size = 20),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+(final_pop_A | final_pop_B) / (final_pop_C | final_pop_D) / (final_pop_E | final_pop_F) + plot_layout(guides = "collect")
+
+```
+
+## Biodiversity: Heatmaps
+
+This section examines observed alpha, beta and gamma diversity across a wide gradient of dispersal parameters ($r$ and $D$) and all three scenarios, and produces Figure 4, Figure 5 and Figure S5. The following chunk takes a while.
+
+```{r}
+
+disp_rates_lst = c(0.001, 0.005, seq(0.01, 0.1, 0.01))
+immi_patches_lst = seq(5, 45, 5)
+
+all_out_num_1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, immi_patches_lst, disp_freq, disp_freq_seasons,
+                              lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var = var, rep = 50, n_disturb = 0)
+all_out_tra_1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, immi_patches_lst, disp_freq, disp_freq_seasons,
+                              lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var = var, rep = 50, n_disturb = 0)
+
+all_out_num_2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, immi_patches_lst, disp_freq, disp_freq_seasons,
+                              lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var = var, rep = 50, n_disturb = 0)
+all_out_tra_2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, immi_patches_lst, disp_freq, disp_freq_seasons,
+                              lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var = var, rep = 50, n_disturb = 0)
+
+all_out_num_3 = multiple_disp(M_3, season_length, n_seasons, disp_rates_lst, immi_patches_lst, disp_freq, disp_freq_seasons,
+                              lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var = var, rep = 50, n_disturb = 0)
+all_out_tra_3 = multiple_disp(M_3, season_length, n_seasons, disp_rates_lst, immi_patches_lst, disp_freq, disp_freq_seasons,
+                              lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var = var, rep = 50, n_disturb = 0)
+
+```
+
+- Alpha Diversity
+
+This chunk produces Figure 4.
+
+```{r}
+
+alpha_1_num =
+all_out_num_1 %>% group_by(disp_rate, immi_patches) %>% summarize(alpha = mean(alpha)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = alpha)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  # theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = disp_rates_lst) + 
+  # scale_x_discrete(name = "Patches with Dispersal (%)", label = immi_patches_lst*2) + 
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("A") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+alpha_1_tra =
+all_out_tra_1 %>% group_by(disp_rate, immi_patches) %>% summarize(alpha = mean(alpha)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = alpha)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  # theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = disp_rates_lst) + 
+  # scale_x_discrete(name = "Patches with Dispersal (%)", label = immi_patches_lst*2) + 
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("B") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+alpha_2_num =
+all_out_num_2 %>% group_by(disp_rate, immi_patches) %>% summarize(alpha = mean(alpha)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = alpha)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("C") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_text(size = 20),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+alpha_2_tra =
+all_out_tra_2 %>% group_by(disp_rate, immi_patches) %>% summarize(alpha = mean(alpha)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = alpha)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("D") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+alpha_3_num =
+all_out_num_3 %>% group_by(disp_rate, immi_patches) %>% summarize(alpha = mean(alpha)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = alpha)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("E") + 
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+alpha_3_tra =
+all_out_tra_3 %>% group_by(disp_rate, immi_patches) %>% summarize(alpha = mean(alpha)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = alpha)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("F") + 
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_text(size = 20), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+(alpha_1_num | alpha_1_tra) / (alpha_2_num | alpha_2_tra) / (alpha_3_num | alpha_3_tra) + plot_layout(guides = "collect")
+
+```
+
+- Beta Diversity
+
+This chunk produces Figure 5.
+
+```{r}
+
+beta_1_num =
+all_out_num_1 %>% group_by(disp_rate, immi_patches) %>% summarize(beta = (mean(beta))) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = beta)) + geom_tile() + 
+  scale_fill_gradient(name = "Beta \nDiversity", low = "#F2CEA2", high = "#4A67E8", limit = c(0, 1)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("A") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+beta_1_tra =
+all_out_tra_1 %>% group_by(disp_rate, immi_patches) %>% summarize(beta = (mean(beta))) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = beta)) + geom_tile() + 
+  scale_fill_gradient(name = "Beta \nDiversity", low = "#F2CEA2", high = "#4A67E8", limit = c(0, 1)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("B") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+beta_2_num =
+all_out_num_2 %>% group_by(disp_rate, immi_patches) %>% summarize(beta = (mean(beta))) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = beta)) + geom_tile() + 
+  scale_fill_gradient(name = "Beta \nDiversity", low = "#F2CEA2", high = "#4A67E8", limit = c(0, 1)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("C") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_text(size = 20),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+beta_2_tra =
+all_out_tra_2 %>% group_by(disp_rate, immi_patches) %>% summarize(beta = (mean(beta))) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = beta)) + geom_tile() + 
+  scale_fill_gradient(name = "Beta \nDiversity", low = "#F2CEA2", high = "#4A67E8", limit = c(0, 1)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("D") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+beta_3_num =
+all_out_num_3 %>% group_by(disp_rate, immi_patches) %>% summarize(beta = (mean(beta))) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = beta)) + geom_tile() + 
+  scale_fill_gradient(name = "Beta \nDiversity", low = "#F2CEA2", high = "#4A67E8", limit = c(0, 1)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("E") + 
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+beta_3_tra =
+all_out_tra_3 %>% group_by(disp_rate, immi_patches) %>% summarize(beta = (mean(beta))) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = beta)) + geom_tile() + 
+  scale_fill_gradient(name = "Beta \nDiversity", low = "#F2CEA2", high = "#4A67E8", limit = c(0, 1)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("F") + 
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_text(size = 20), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+(beta_1_num | beta_1_tra) / (beta_2_num | beta_2_tra) / (beta_3_num | beta_3_tra) + plot_layout(guides = "collect")
+
+```
+
+- Gamma Diversity
+
+This chunk produces Figure S5.
+
+```{r}
+
+gamma_1_num =
+all_out_num_1 %>% group_by(disp_rate, immi_patches) %>% summarize(gamma = mean(gamma)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = gamma)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("A") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+gamma_1_tra =
+all_out_tra_1 %>% group_by(disp_rate, immi_patches) %>% summarize(gamma = mean(gamma)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = gamma)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("B") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+gamma_2_num =
+all_out_num_2 %>% group_by(disp_rate, immi_patches) %>% summarize(gamma = mean(gamma)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = gamma)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("C") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_text(size = 20),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+gamma_2_tra =
+all_out_tra_2 %>% group_by(disp_rate, immi_patches) %>% summarize(gamma = mean(gamma)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = gamma)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("D") + 
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+gamma_3_num =
+all_out_num_3 %>% group_by(disp_rate, immi_patches) %>% summarize(gamma = mean(gamma)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = gamma)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("E") + 
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+gamma_3_tra =
+all_out_tra_3 %>% group_by(disp_rate, immi_patches) %>% summarize(gamma = mean(gamma)) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = as.factor(disp_rate), fill = gamma)) + geom_tile() + 
+  scale_fill_gradient(name = "Richness", low = "#F2CEA2", high = "#4A67E8", limit = c(1, 5)) + 
+  theme_bw() + scale_y_discrete(name = "Dispersal Rate", label = c(0.001, 0.005, 0.01, "", "", "", 0.05, "", "", "", "", 0.1)) +
+  scale_x_discrete(name = "Patches with Dispersal", label = c("10%", "", "", "", "50%", "", "", "", "90%")) + 
+  theme(panel.grid.major = element_blank()) + ggtitle("F") + 
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_blank(), axis.ticks = element_blank(), 
+        axis.title.x = element_text(size = 20), axis.title.y = element_blank(),
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+(gamma_1_num | gamma_1_tra) / (gamma_2_num | gamma_2_tra) / (gamma_3_num | gamma_3_tra) + plot_layout(guides = "collect")
+
+```
+
+## Biodiversity: Boxplots (Supplements Only)
+
+This section produces Figure S8, Figure S9 and Figure S10, which describes the distribution of diversity metrics across different $D$s and scenarios under low, medium and high dispersal rates, respectively. For simplicity, we only provide the code necessary to produce the leftmost column of Figure S8 (Scenario 1 with $r=0.01$) and other parts of these figures can be easily produced by swapping simulation result data.
+
+```{r}
+
+# Alpha diversity
+
+num_10_local = num_10_low[[1]] %>% alphadiv(regional = F) %>% mutate(immi_patches = 10, type = "numeric")
+num_20_local = num_20_low[[1]] %>% alphadiv(regional = F) %>% mutate(immi_patches = 20, type = "numeric")
+num_30_local = num_30_low[[1]] %>% alphadiv(regional = F) %>% mutate(immi_patches = 30, type = "numeric")
+num_40_local = num_40_low[[1]] %>% alphadiv(regional = F) %>% mutate(immi_patches = 40, type = "numeric")
+
+tra_10_local = tra_10_low[[1]] %>% alphadiv(regional = F) %>% mutate(immi_patches = 10, type = "trait-mediated")
+tra_20_local = tra_20_low[[1]] %>% alphadiv(regional = F) %>% mutate(immi_patches = 20, type = "trait-mediated")
+tra_30_local = tra_30_low[[1]] %>% alphadiv(regional = F) %>% mutate(immi_patches = 30, type = "trait-mediated")
+tra_40_local = tra_40_low[[1]] %>% alphadiv(regional = F) %>% mutate(immi_patches = 40, type = "trait-mediated")
+
+divAlpha = bind_rows(num_10_local, num_20_local, num_30_local, num_40_local, 
+                     tra_10_local, tra_20_local, tra_30_local, tra_40_local) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = richness, fill = type)) + 
+  scale_fill_manual(name = "Type", values = color_scheme, labels = c("Numeric", "Trait-mediated"), guide = "none") +
+  scale_x_discrete(name = "Dispersal Patches", label = c("20%", "40%", "60%", "80%")) + 
+  geom_boxplot() + theme_bw() + xlab("Dispersal Patches") + ylab("Alpha Diversity") + ylim(0, 5) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("A") + 
+  theme(axis.text = element_text(size = 15), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.title.y = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+# Beta diversity
+
+num_10_dissim = num_10_low[[1]] %>% dissimilarity() %>% mutate(immi_patches = 10, type = "numeric")
+num_20_dissim = num_20_low[[1]] %>% dissimilarity() %>% mutate(immi_patches = 20, type = "numeric")
+num_30_dissim = num_30_low[[1]] %>% dissimilarity() %>% mutate(immi_patches = 30, type = "numeric")
+num_40_dissim = num_40_low[[1]] %>% dissimilarity() %>% mutate(immi_patches = 40, type = "numeric")
+
+tra_10_dissim = tra_10_low[[1]] %>% dissimilarity() %>% mutate(immi_patches = 10, type = "trait-mediated")
+tra_20_dissim = tra_20_low[[1]] %>% dissimilarity() %>% mutate(immi_patches = 20, type = "trait-mediated")
+tra_30_dissim = tra_30_low[[1]] %>% dissimilarity() %>% mutate(immi_patches = 30, type = "trait-mediated")
+tra_40_dissim = tra_40_low[[1]] %>% dissimilarity() %>% mutate(immi_patches = 40, type = "trait-mediated")
+
+divBeta = bind_rows(num_10_dissim, num_20_dissim, num_30_dissim, num_40_dissim, 
+                    tra_10_dissim, tra_20_dissim, tra_30_dissim, tra_40_dissim) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = dissim, fill = type)) + 
+  scale_fill_manual(name = "Type", values = color_scheme, labels = c("Numeric", "Trait-mediated"), guide = "none") +
+  scale_x_discrete(name = "Dispersal Patches", label = c("20%", "40%", "60%", "80%")) + 
+  geom_boxplot() + theme_bw() + ylab("Beta Diversity") + # ylim(0.5, 0.9) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("D") + 
+  theme(axis.text = element_text(size = 15), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.title.y = element_text(size = 20), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+# Gamma diversity
+
+num_10_regional = num_10_low[[1]] %>% alphadiv(regional = T) %>% mutate(immi_patches = 10, type = "numeric")
+num_20_regional = num_20_low[[1]] %>% alphadiv(regional = T) %>% mutate(immi_patches = 20, type = "numeric")
+num_30_regional = num_30_low[[1]] %>% alphadiv(regional = T) %>% mutate(immi_patches = 30, type = "numeric")
+num_40_regional = num_40_low[[1]] %>% alphadiv(regional = T) %>% mutate(immi_patches = 40, type = "numeric")
+
+tra_10_regional = tra_10_low[[1]] %>% alphadiv(regional = T) %>% mutate(immi_patches = 10, type = "trait-mediated")
+tra_20_regional = tra_20_low[[1]] %>% alphadiv(regional = T) %>% mutate(immi_patches = 20, type = "trait-mediated")
+tra_30_regional = tra_30_low[[1]] %>% alphadiv(regional = T) %>% mutate(immi_patches = 30, type = "trait-mediated")
+tra_40_regional = tra_40_low[[1]] %>% alphadiv(regional = T) %>% mutate(immi_patches = 40, type = "trait-mediated")
+
+divGamma = bind_rows(num_10_regional, num_20_regional, num_30_regional, num_40_regional, 
+                     tra_10_regional, tra_20_regional, tra_30_regional, tra_40_regional) %>% 
+  ggplot(aes(x = as.factor(immi_patches), y = richness, fill = type)) + 
+  scale_fill_manual(name = "Type", values = color_scheme, labels = c("Numeric", "Trait-mediated"), guide = "none") +
+  scale_x_discrete(name = "Dispersal Patches", label = c("20%", "40%", "60%", "80%")) + 
+  geom_boxplot() + theme_bw() + xlab("Dispersal Patches") + ylab("Gamma Diversity") + ylim(0, 5) +
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("G") + 
+  theme(axis.text = element_text(size = 15), axis.title.x = element_blank(), axis.ticks = element_blank(), axis.title.y = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+# Left =
+divAlpha / divBeta / divGamma
+
+```
+
+## Temporal Turnover
+
+This section calculates and plots temporal turnover of metacommunity over fixed intervals using methods of Legendre (2019). The plotted dissimilarity index is the $D$ in Legendre 2019, which describes the collective effects of species gains and losses between two time points. This chunk produces Figure 6, Figure S9 and Figure S10 for Scenarios 1 , 2 and 3, respectively.
+
+```{r}
+
+temp_num_10_low = temporal_beta(num_10_low[[1]], 10) %>% mutate(immi_patches = 10, type = "numeric")
+temp_num_20_low = temporal_beta(num_20_low[[1]], 10) %>% mutate(immi_patches = 20, type = "numeric")
+temp_num_30_low = temporal_beta(num_30_low[[1]], 10) %>% mutate(immi_patches = 30, type = "numeric")
+temp_num_40_low = temporal_beta(num_40_low[[1]], 10) %>% mutate(immi_patches = 40, type = "numeric")
+
+temp_tra_10_low = temporal_beta(tra_10_low[[1]], 10) %>% mutate(immi_patches = 10, type = "trait-mediated")
+temp_tra_20_low = temporal_beta(tra_20_low[[1]], 10) %>% mutate(immi_patches = 20, type = "trait-mediated")
+temp_tra_30_low = temporal_beta(tra_30_low[[1]], 10) %>% mutate(immi_patches = 30, type = "trait-mediated")
+temp_tra_40_low = temporal_beta(tra_40_low[[1]], 10) %>% mutate(immi_patches = 40, type = "trait-mediated")
+
+temp_num_10_mid = temporal_beta(num_10_mid[[1]], 10) %>% mutate(immi_patches = 10, type = "numeric")
+temp_num_20_mid = temporal_beta(num_20_mid[[1]], 10) %>% mutate(immi_patches = 20, type = "numeric")
+temp_num_30_mid = temporal_beta(num_30_mid[[1]], 10) %>% mutate(immi_patches = 30, type = "numeric")
+temp_num_40_mid = temporal_beta(num_40_mid[[1]], 10) %>% mutate(immi_patches = 40, type = "numeric")
+
+temp_tra_10_mid = temporal_beta(tra_10_mid[[1]], 10) %>% mutate(immi_patches = 10, type = "trait-mediated")
+temp_tra_20_mid = temporal_beta(tra_20_mid[[1]], 10) %>% mutate(immi_patches = 20, type = "trait-mediated")
+temp_tra_30_mid = temporal_beta(tra_30_mid[[1]], 10) %>% mutate(immi_patches = 30, type = "trait-mediated")
+temp_tra_40_mid = temporal_beta(tra_40_mid[[1]], 10) %>% mutate(immi_patches = 40, type = "trait-mediated")
+
+temp_num_10_high = temporal_beta(num_10_high[[1]], 10) %>% mutate(immi_patches = 10, type = "numeric")
+temp_num_20_high = temporal_beta(num_20_high[[1]], 10) %>% mutate(immi_patches = 20, type = "numeric")
+temp_num_30_high = temporal_beta(num_30_high[[1]], 10) %>% mutate(immi_patches = 30, type = "numeric")
+temp_num_40_high = temporal_beta(num_40_high[[1]], 10) %>% mutate(immi_patches = 40, type = "numeric")
+
+temp_tra_10_high = temporal_beta(tra_10_high[[1]], 10) %>% mutate(immi_patches = 10, type = "trait-mediated")
+temp_tra_20_high = temporal_beta(tra_20_high[[1]], 10) %>% mutate(immi_patches = 20, type = "trait-mediated")
+temp_tra_30_high = temporal_beta(tra_30_high[[1]], 10) %>% mutate(immi_patches = 30, type = "trait-mediated")
+temp_tra_40_high = temporal_beta(tra_40_high[[1]], 10) %>% mutate(immi_patches = 40, type = "trait-mediated")
+
+num_temporal_1 = rbind(temp_num_10_low, temp_num_20_low, temp_num_30_low, temp_num_40_low) %>% 
+  pivot_longer(cols = c("B", "C", "D"), names_to = "measurement", values_to = "value")
+tempbetaA = num_temporal_1 %>% filter(measurement == "D") %>% 
+  ggplot(aes(x = time, y = value, linetype = measurement, color = as.factor(immi_patches))) + geom_line() + 
+  geom_point(size = 3) + theme_bw() + xlab("Time") + ylab("Dissimilarity Index") + ylim(0, 1) + 
+  scale_color_manual(name = "Patches with \nDispersal", values = color_gradient, labels = c("20%", "40%", "60%", "80%")) + 
+  scale_linetype_manual(values = c(1), guide = "none") + 
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("A") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+tra_temporal_1 = rbind(temp_tra_10_low, temp_tra_20_low, temp_tra_30_low, temp_tra_40_low) %>% 
+  pivot_longer(cols = c("B", "C", "D"), names_to = "measurement", values_to = "value")
+tempbetaB = tra_temporal_1 %>% filter(measurement == "D") %>% 
+  ggplot(aes(x = time, y = value, linetype = measurement, color = as.factor(immi_patches))) + geom_line() + 
+  geom_point(size = 3) + theme_bw() + xlab("Time") + ylab("Dissimilarity Index") + ylim(0, 1) + 
+  scale_color_manual(name = "Patches with \nDispersal", values = color_gradient, labels = c("20%", "40%", "60%", "80%")) + 
+  scale_linetype_manual(values = c(1), guide = "none") + 
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("B") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+num_temporal_2 = rbind(temp_num_10_mid, temp_num_20_mid, temp_num_30_mid, temp_num_40_mid) %>% 
+  pivot_longer(cols = c("B", "C", "D"), names_to = "measurement", values_to = "value")
+tempbetaC = num_temporal_2 %>% filter(measurement == "D") %>% 
+  ggplot(aes(x = time, y = value, linetype = measurement, color = as.factor(immi_patches))) + geom_line() + 
+  geom_point(size = 3) + theme_bw() + xlab("Time") + ylab("Dissimilarity Index") + ylim(0, 1) + 
+  scale_color_manual(name = "Patches with \nDispersal", values = color_gradient, labels = c("20%", "40%", "60%", "80%")) + 
+  scale_linetype_manual(values = c(1), guide = "none") + 
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("C") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_text(size = 20), axis.ticks = element_blank(), axis.title.x = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+tra_temporal_1 = rbind(temp_tra_10_mid, temp_tra_20_mid, temp_tra_30_mid, temp_tra_40_mid) %>% 
+  pivot_longer(cols = c("B", "C", "D"), names_to = "measurement", values_to = "value")
+tempbetaD = tra_temporal_2 %>% filter(measurement == "D") %>% 
+  ggplot(aes(x = time, y = value, linetype = measurement, color = as.factor(immi_patches))) + geom_line() + 
+  geom_point(size = 3) + theme_bw() + xlab("Time") + ylab("Dissimilarity Index") + ylim(0, 1) + 
+  scale_color_manual(name = "Patches with \nDispersal", values = color_gradient, labels = c("20%", "40%", "60%", "80%")) + 
+  scale_linetype_manual(values = c(1), guide = "none") + 
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("D") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+num_temporal_2 = rbind(temp_num_10_high, temp_num_20_high, temp_num_30_high, temp_num_40_high) %>% 
+  pivot_longer(cols = c("B", "C", "D"), names_to = "measurement", values_to = "value")
+tempbetaE = num_temporal_3 %>% filter(measurement == "D") %>% 
+  ggplot(aes(x = time, y = value, linetype = measurement, color = as.factor(immi_patches))) + geom_line() + 
+  geom_point(size = 3) + theme_bw() + xlab("Time") + ylab("Dissimilarity Index") + ylim(0, 1) + 
+  scale_color_manual(name = "Patches with \nDispersal", values = color_gradient, labels = c("20%", "40%", "60%", "80%")) + 
+  scale_linetype_manual(values = c(1), guide = "none") + 
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("E") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+tra_temporal_1 = rbind(temp_tra_10_high, temp_tra_20_high, temp_tra_30_high, temp_tra_40_high) %>% 
+  pivot_longer(cols = c("B", "C", "D"), names_to = "measurement", values_to = "value")
+tempbetaF = tra_temporal_3 %>% filter(measurement == "D") %>% 
+  ggplot(aes(x = time, y = value, linetype = measurement, color = as.factor(immi_patches))) + geom_line() + 
+  geom_point(size = 3) + theme_bw() + xlab("Time") + ylab("Dissimilarity Index") + ylim(0, 1) + 
+  scale_color_manual(name = "Patches with \nDispersal", values = color_gradient, labels = c("20%", "40%", "60%", "80%")) + 
+  scale_linetype_manual(values = c(1), guide = "none") + 
+  theme(panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) + ggtitle("F") + 
+  theme(axis.text = element_text(size = 15), axis.title.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_text(size = 20), 
+        legend.text = element_text(size = 17), legend.title = element_text(size = 20), plot.title = element_text(size = 20))
+
+(tempbetaA | tempbetaB) / (tempbetaC | tempbetaD) / (tempbetaE | tempbetaF) + plot_layout(guides = "collect")
+
+```
