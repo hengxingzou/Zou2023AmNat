@@ -186,7 +186,7 @@ dispersal = function(metacom_matrix, disp_rates, immi_patches) {
   # Set up emigration matrix and immigration matrix
   E = matrix(0, nrow = nspp, ncol = immi_patches)
   I = matrix(0, nrow = nspp, ncol = size)
-  
+
   # Emigration: draw emigrants of each species and stage from randomly selected patch
   source = sample(1:size, immi_patches)
   

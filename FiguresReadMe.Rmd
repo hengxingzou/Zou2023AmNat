@@ -60,7 +60,7 @@ The following chunk defines necessary parameters for running the simulation. Not
 
 nspp = 5 # number of species; n
 size = 50 # number of patches; P
-init_pop = 50 # initial population; N_0
+init_pop = 10 # initial population; N_0
 
 intra = rep(0.07, nspp) # intraspecific competition coefficients of all speciesp; alpha_ii
 B = 0.225 # asymptotic maximum of the competition-phenology function (Eqn. 2)
@@ -100,8 +100,8 @@ We have also supplied initial metacommunities for running our simulations in the
 
 ```{r}
 
-M_1 = read.csv("SavedMetacoms/metacom_1.csv") %>% select(-1) %>% as.matrix()
-M_2 = read.csv("SavedMetacoms/metacom_2.csv") %>% select(-1) %>% as.matrix()
+M_1 = read.csv("SavedMetacoms/metacom_1.csv") %>% as.matrix()
+M_2 = read.csv("SavedMetacoms/metacom_2.csv") %>% as.matrix()
 
 ```
 
@@ -121,26 +121,26 @@ This takes a while.
 
 # Low intra (shown in the main text)
 
-intra = rep(0.07, 5)
+intra = rep(0.07, nspp)
 
 # Medium intra (shown in Appendix II, Figure S8-1S0)
 
-# intra = rep(0.10, 5)
+# intra = rep(0.10, nspp)
 
 # High intra (shown in Appendix II, Figure S11-S13)
 
-# intra = rep(0.15, 5)
+# intra = rep(0.15, nspp)
 
 # Low dispersal, Scenario 1
 
 disp_rates = rep(0.01, nspp)
 
 num_lowdisp = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                            lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = nd, burnin = 10)
+                            lambda, intra, B, scal, xmid, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_num_lowdisp = met_df_multirep(num_lowdisp[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
 
 tra_lowdisp = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                            lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = nd, burnin = 10)
+                            lambda, intra, B, scal, xmid, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_tra_lowdisp = met_df_multirep(tra_lowdisp[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
 
 lowdisp = rbind(dynamics_num_lowdisp, dynamics_tra_lowdisp) %>% mutate(disp_rate = 0.01)
@@ -150,11 +150,11 @@ lowdisp = rbind(dynamics_num_lowdisp, dynamics_tra_lowdisp) %>% mutate(disp_rate
 disp_rates = rep(0.1, nspp)
 
 num_highdisp = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                             lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = nd, burnin = 10)
+                             lambda, intra, B, scal, xmid, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_num_highdisp = met_df_multirep(num_highdisp[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
 
 tra_highdisp = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                             lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = nd, burnin = 10)
+                             lambda, intra, B, scal, xmid, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_tra_highdisp = met_df_multirep(tra_highdisp[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
 
 highdisp = rbind(dynamics_num_highdisp, dynamics_tra_highdisp) %>% mutate(disp_rate = 0.1)
@@ -164,11 +164,11 @@ highdisp = rbind(dynamics_num_highdisp, dynamics_tra_highdisp) %>% mutate(disp_r
 disp_rates = rep(0.01, nspp)
 
 num_lowdisp_2 = multiple_reps(M_2, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                              lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = nd, burnin = 10)
+                              lambda, intra, B, scal, xmid, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_num_lowdisp_2 = met_df_multirep(num_lowdisp_2[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
 
 tra_lowdisp_2 = multiple_reps(M_2, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                              lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = nd, burnin = 10)
+                              lambda, intra, B, scal, xmid, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_tra_lowdisp_2 = met_df_multirep(tra_lowdisp_2[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
 
 lowdisp_2 = rbind(dynamics_num_lowdisp_2, dynamics_tra_lowdisp_2) %>% mutate(disp_rate = 0.01)
@@ -178,11 +178,11 @@ lowdisp_2 = rbind(dynamics_num_lowdisp_2, dynamics_tra_lowdisp_2) %>% mutate(dis
 disp_rates = rep(0.1, nspp)
 
 num_highdisp_2 = multiple_reps(M_2, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                               lambda, surv, intra, B, scal, xmid, 0, end_season_surv, max_time, var, rep = 50, n_disturb = nd, burnin = 10)
+                               lambda, intra, B, scal, xmid, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_num_highdisp_2 = met_df_multirep(num_highdisp_2[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
 
 tra_highdisp_2 = multiple_reps(M_2, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                               lambda, surv, intra, B, scal, xmid, 1, end_season_surv, max_time, var, rep = 50, n_disturb = nd, burnin = 10)
+                               lambda, intra, B, scal, xmid, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_tra_highdisp_2 = met_df_multirep(tra_highdisp_2[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
 
 highdisp_2 = rbind(dynamics_num_highdisp_2, dynamics_tra_highdisp_2) %>% mutate(disp_rate = 0.1)
@@ -270,40 +270,33 @@ for (r in 1:50) {
   }
 }
 
+all_counts %<>% mutate(init_cond = fct_relevel(init_cond, "single_spp", "equal_pop"))
+
+# Calculate mean and standard deviation of occupancy data
+
+all_counts_summ = all_counts %>% group_by(type, disp_rate, init_cond) %>% 
+  summarize(mean = mean(occupancy), sd = sd(occupancy))
+
 # Plotting
 
-all_counts %>% mutate(init_cond = fct_relevel(init_cond, "single_spp", "equal_pop")) %>% 
-  ggplot(aes(x = as.factor(disp_rate), y = occupancy, fill = type)) + geom_boxplot() + 
-  stat_summary(fun = median, geom = "point", size = 3, shape = 21, aes(fill = type), color = "black",
-               position = position_dodge(0.75), show.legend = F) +
-  theme_bw() + xlab("Dispersal rate") + ylab("Occupancy of the\ndominant species") + ylim(0, 1) +
+ggplot() + 
+  geom_point(data = all_counts, aes(x = as.factor(disp_rate), y = occupancy, color = type), 
+              alpha = 0.3, position = position_jitterdodge(jitter.width = 0.2)) +
+  geom_errorbar(data = all_counts_summ,
+                aes(x = as.factor(disp_rate), ymin = mean-sd, ymax = mean+sd, color = type),
+                width = 0, position = position_dodge(0.75)) +
+  geom_point(data = all_counts_summ, 
+             aes(x = as.factor(disp_rate), y = mean, fill = type), 
+             shape = 21, color = "black", size = 3, position = position_dodge(0.75)) + 
+  theme_bw() + xlab("Dispersal rate") + ylab("Occupancy of the\ndominant species") + #ylim(0, 1) +
   scale_x_discrete(label = c("Low", "High")) +
-  scale_color_manual(values = c("#5A72D1", "#D97437")) +
+  scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
   scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
   facet_grid(. ~ init_cond, scales = "free_y", 
              labeller = labeller(init_cond = c(single_spp = "1. Numeric advantage", equal_pop = "2. Equal initial"))) + 
   theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
         axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), 
-        panel.grid.minor = element_blank(), 
-        panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
-        strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
-
-# Plotting mean
-
-all_counts %>% mutate(init_cond = fct_relevel(init_cond, "single_spp", "equal_pop")) %>% 
-  group_by(type, disp_rate, init_cond) %>% summarize(mean = mean(occupancy), sd = sd(occupancy)) %>% 
-  ggplot(aes(x = as.factor(disp_rate), y = mean, color = type)) + 
-  geom_errorbar(aes(ymin = mean-sd, ymax = mean+sd), width = 0.3, position = position_dodge(0.75)) + 
-  geom_point(position = position_dodge(0.75), size = 3) +
-  theme_bw() + xlab("Dispersal rate") + ylab("Occupancy of the\ndominant species") + #ylim(0, 1) +
-  scale_x_discrete(label = c("Low", "High")) +
-  scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
-  facet_grid(. ~ init_cond, scales = "free_y", 
-             labeller = labeller(init_cond = c(single_spp = "1. Numeric advantage", equal_pop = "2. Equal initial"))) + 
-  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
-        axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
         panel.grid.minor = element_blank(), 
         panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
         strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
@@ -419,7 +412,7 @@ rbind(mutate(all_Sce1, init_cond = "single_spp"),
                                  init_cond = c(single_spp = "1. Numeric advantage", equal_pop = "2. Equal initial"))) + 
   theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
         axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
         panel.grid.minor = element_blank(), 
         panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
         strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
@@ -540,7 +533,7 @@ rbind(mutate(all_var1, var = as.factor(0.5)),
                                  var = c(`0.5` = "Small", `2` = "Medium", `8` = "Large"))) + 
   theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
         axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
         panel.grid.minor = element_blank(), 
         panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
         strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
@@ -565,7 +558,7 @@ rbind(mutate(all_var12, var = as.factor(0.5)),
                                  var = c(`0.5` = "Small", `2` = "Medium", `8` = "Large"))) + 
   theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
         axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
         panel.grid.minor = element_blank(), 
         panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
         strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
@@ -606,7 +599,7 @@ rbind(tb_Sce1, tb_Sce2) %>% mutate(init_cond = fct_relevel(init_cond, "single_sp
                                  init_cond = c(single_spp = "1. Numeric advantage", equal_pop = "2. Equal initial"))) +
   theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
         axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), 
+        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
         panel.grid.minor = element_blank(), 
         panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
         strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
