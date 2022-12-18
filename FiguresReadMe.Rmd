@@ -10,27 +10,34 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 source("Functions_SpatialBH.R")
 
+fig_dir = "Figures"
+if (!dir.exists(fig_dir)) {
+  dir.create(fig_dir)
+}
+
 ```
 
 This document contains code needed to produce all figures in the main text and supporting information of "Mechanisms of Priority Effects Determine Dispersal-Diversity Relationships in Seasonal Metacommunities", as well as a brief readme section. All necessary functions are annotated in the `R` file `Functions_SpatialBH.R`. Before running following code, please make sure that the `R` file and this file are under the same directory.
 
 # Basic Description of the Model
 
-Local population dynamics are described by a modified Beverton-Holt model: 
+Local population dynamics are described by a modified Beverton-Holt model. Before dispersal and end-of-season mortality, the population at the end of the season $N_i'(t+1)$ is:
 
 $$
 
-N_{i}(t+1) = \frac{s_{i}\lambda_iN_i(t)}{1+\Sigma^n_{j=1}\alpha_{ij}\lambda_{i}N_{j}(t)}
+N_{i}'(t+1) = \frac{\lambda_iN_i(t)}{1+\Sigma^n_{j=1}\alpha_{ij}\lambda_{i}N_{j}(t)}
 
 $$
 
-where population of the next season is determined by density-dependent population growth and the proportion of population surviving into the next generation. Trait-mediated priority effects is allowed by calculating interspecific competition coefficients, $\alpha_{ij}$, as a function of relative time of emergence between two species, $\Delta p_{ij}$:
+where population of the next season is determined by density-dependent population growth and the proportion of population surviving into the next generation. $N_i(t)$ and $N_j(t)$ denote population of this season but after dispersal and end-of-season mortality. Trait-mediated priority effects is allowed by calculating interspecific competition coefficients, $\alpha_{ij}$, as a function of relative time of emergence between two species, $\Delta p_{ij}$:
 
 $$
 
 \alpha_{ij} = \frac{B}{1+\exp({(d-\Delta p_{ij})/c})}
 
 $$
+
+where $\Delta p_{ij}=p_{j}-p_{i}$.
 
 # Relaxing Assumptions in the Main Text
 
@@ -48,7 +55,11 @@ We assume dispersal happens only once at the end of the season. In nature, dispe
 
 We assume that no patch within the metacommunity undergo extinction. Our model can simulate the situation when we relax this assumption by setting an additional parameter, number of patches with disturbance ($P_d$), to a nonzero integer. $P_d$ should not be larger than $P$, the number of patches in the metacommunity. At the end of the season, we randomly choose $P_d$ patches and set population of all species in these patches to 0. 
 
-# Code for Producing Figures
+# Data Generation
+
+**WARNING**
+
+The following section takes a while to run: generating all data would take up to 5 hours, depending on the machine. We suggest using the provided `.RData` file for fast reproduction of figures in the main text. Note that because of the stochastic process these reproduced figures may not match exactly with figures in the main text.
 
 ## Initial conditions
 
@@ -64,8 +75,7 @@ init_pop = 10 # initial population; N_0
 
 intra = rep(0.07, nspp) # intraspecific competition coefficients of all speciesp; alpha_ii
 B = 0.225 # asymptotic maximum of the competition-phenology function (Eqn. 2)
-scal = -0.5 # midpoint of the competition-phenology function (Eqn. 2)
-xmid = 0 # midpoint of the competition-phenology function (Eqn. 2)
+scal = 0.5 # midpoint of the competition-phenology function (Eqn. 2)
 
 max_time = 0.5*(nspp-1) # maximum difference in time of emergence; equally partitioned by number of species to 
                         # generate average time of emergence for each species
@@ -84,15 +94,17 @@ Pd = 0 # number of patches with disturbance; P_d
 
 - Initial Metacommunities
 
-The following chunk initiate metacommunities according to the three scenarios outlined in the main text: 
-Scenario 1: Initial populations are separated across patches;
-Scenario 2: Initial populations are equal across all patches;
+The following chunk initiate metacommunities according to the two scenarios outlined in the main text: 
+
+Scenario 1: Initial populations are equal across all patches (Equal Initials);
+Scenario 2: One species colonizes each patch first (First Colonizer).
+
 We suggest reusing these initial metacommunities for all analyses because they are randomly generated and could lead to different results for each run. 
 
 ```{r}
 
-M_1 = init_metacom(size, nspp, 10, each = T)
-M_2 = init_metacom(size, nspp, 10)
+M_1 = init_metacom(size, nspp, 10)
+M_2 = init_metacom(size, nspp, 10, each = T)
 
 ```
 
@@ -105,17 +117,11 @@ M_2 = read.csv("SavedMetacoms/metacom_2.csv") %>% as.matrix()
 
 ```
 
-The following chunk provide code for simulating a time series of 100 seasons, with 50 repetitions and four numbers of patches with dispersal. The 24 results correspond to the full factorial of 3 dispersal rates $r$,  4 number of patches with dispersal $D$ and two types of priority effects. The naming of these results follows: type of numeric priority effects-$D$-$r$ (low, medium or high; see Table 1 in the main text). This takes a while.
-
-All the following sections, except **Biodiversity: Heatmaps**, uses Scenario 1 as a default and produce figures in the main text. For supplementary figures, rerun the previous chunk with `M_2` or `M_3` for Scenarios 2 and 3, respectively.
-
 ## Population Dynamics
 
-The following chunks parses and plot data of population dynamics (Figure 2 and Figure S4 for Scenarios 1 and 2, respectively). For analyses using other intraspecific competition coefficients (Figure S8-S13), change the `intra` values below accordingly. After simulations, make sure to reset `intra` to the default value (0.07) before running other simulations.
+The following chunk provide code for simulating a time series of 100 seasons under each case and parameter combinations. The total number of cases is 8, with a factorial design of scenarios (Equal Initials or First Colonizer) $x$ presence of trait-mediated priority effects $x$ dispersal rates (low or high). For analyses using other intraspecific competition coefficients (Figure S8-S13), change the `intra` values below accordingly. After simulations, make sure to reset `intra` to the default value (0.07) before running other simulations.
 
-- Generate Data
-
-This takes a while.
+**ESTIMATED RUNTIME: 30 MINS**
 
 ```{r}
 
@@ -135,40 +141,40 @@ intra = rep(0.07, nspp)
 
 disp_rates = rep(0.01, nspp)
 
-num_lowdisp = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                            lambda, intra, B, scal, xmid, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
-dynamics_num_lowdisp = met_df_multirep(num_lowdisp[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
+num_lowdisp_1 = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
+                            lambda, intra, B, scal, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
+dynamics_num_lowdisp_1 = met_df_multirep(num_lowdisp_1[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
 
-tra_lowdisp = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                            lambda, intra, B, scal, xmid, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
-dynamics_tra_lowdisp = met_df_multirep(tra_lowdisp[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
+tra_lowdisp_1 = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
+                            lambda, intra, B, scal, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
+dynamics_tra_lowdisp_1 = met_df_multirep(tra_lowdisp_1[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
 
-lowdisp = rbind(dynamics_num_lowdisp, dynamics_tra_lowdisp) %>% mutate(disp_rate = 0.01)
+lowdisp_1 = rbind(dynamics_num_lowdisp_1, dynamics_tra_lowdisp_1) %>% mutate(disp_rate = 0.01)
 
 # High dispersal, Scenario 1
 
 disp_rates = rep(0.1, nspp)
 
-num_highdisp = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                             lambda, intra, B, scal, xmid, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
-dynamics_num_highdisp = met_df_multirep(num_highdisp[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
+num_highdisp_1 = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
+                             lambda, intra, B, scal, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
+dynamics_num_highdisp_1 = met_df_multirep(num_highdisp_1[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
 
-tra_highdisp = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                             lambda, intra, B, scal, xmid, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
-dynamics_tra_highdisp = met_df_multirep(tra_highdisp[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
+tra_highdisp_1 = multiple_reps(M_1, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
+                             lambda, intra, B, scal, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
+dynamics_tra_highdisp_1 = met_df_multirep(tra_highdisp_1[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
 
-highdisp = rbind(dynamics_num_highdisp, dynamics_tra_highdisp) %>% mutate(disp_rate = 0.1)
+highdisp_1 = rbind(dynamics_num_highdisp_1, dynamics_tra_highdisp_1) %>% mutate(disp_rate = 0.1)
 
 # Low dispersal, Scenario 2
 
 disp_rates = rep(0.01, nspp)
 
 num_lowdisp_2 = multiple_reps(M_2, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                              lambda, intra, B, scal, xmid, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
+                              lambda, intra, B, scal, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_num_lowdisp_2 = met_df_multirep(num_lowdisp_2[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
 
 tra_lowdisp_2 = multiple_reps(M_2, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                              lambda, intra, B, scal, xmid, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
+                              lambda, intra, B, scal, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_tra_lowdisp_2 = met_df_multirep(tra_lowdisp_2[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
 
 lowdisp_2 = rbind(dynamics_num_lowdisp_2, dynamics_tra_lowdisp_2) %>% mutate(disp_rate = 0.01)
@@ -178,24 +184,165 @@ lowdisp_2 = rbind(dynamics_num_lowdisp_2, dynamics_tra_lowdisp_2) %>% mutate(dis
 disp_rates = rep(0.1, nspp)
 
 num_highdisp_2 = multiple_reps(M_2, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                               lambda, intra, B, scal, xmid, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
+                               lambda, intra, B, scal, 0, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_num_highdisp_2 = met_df_multirep(num_highdisp_2[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "num")
 
 tra_highdisp_2 = multiple_reps(M_2, season_length, n_seasons, disp_rates, 50, disp_freq, disp_freq_seasons,
-                               lambda, intra, B, scal, xmid, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
+                               lambda, intra, B, scal, 1, max_time, var, rep = 50, n_disturb = Pd, burnin = 10)
 dynamics_tra_highdisp_2 = met_df_multirep(tra_highdisp_2[[1]]) %>% filter(!(time == 0)) %>% mutate(time = time) %>% mutate(type = "tra")
 
 highdisp_2 = rbind(dynamics_num_highdisp_2, dynamics_tra_highdisp_2) %>% mutate(disp_rate = 0.1)
 
 ```
 
+## Dispersal-Diversity Relationships
+
+The following chunks produce figures of dispersal-diversity relationships under two initial scenarios. For analyses using other intraspecific competition coefficients (Figure S10, S13), change the `intra` values below accordingly. After simulations, make sure to reset `intra` to the default value (0.07) before running other simulations.
+
+**ESTIMATED RUNTIME: 60 MINS**
+
+```{r}
+
+# Low intra (shown in the main text)
+
+intra = rep(0.07, 5)
+
+# Medium intra (shown in Appendix II, Figure S8-S10)
+
+# intra = rep(0.10, 5)
+
+# High intra (shown in Appendix II, Figure S11-S13)
+
+# intra = rep(0.15, 5)
+
+disp_rates_lst = c(0.001, 0.005, seq(0.01, 0.1, 0.01))
+
+# Scenario 1
+
+num_Sce1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 0, max_time, var = var, rep = 50, burnin = 10)
+tra_Sce1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 1, max_time, var = var, rep = 50, burnin = 10)
+
+num_Sce1 %<>% mutate(type = "num")
+tra_Sce1 %<>% mutate(type = "tra")
+all_Sce1 = rbind(num_Sce1, tra_Sce1)
+
+# Scenario 2
+
+num_Sce2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 0, max_time, var = var, rep = 50)
+tra_Sce2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 1, max_time, var = var, rep = 50)
+
+num_Sce2 %<>% mutate(type = "num")
+tra_Sce2 %<>% mutate(type = "tra")
+all_Sce2 = rbind(num_Sce2, tra_Sce2)# %>% pivot_longer(cols = 2:4, names_to = "metric", values_to = "values")
+
+```
+
+## Different Variations in Phenology
+
+**ESTIMATED RUNNING TIME: 180 MINS**
+
+- Scenario 1
+
+```{r}
+
+# Low var
+
+var = 0.5
+num_lowvar_1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 0, max_time, var = var, rep = 50, burnin = 10)
+tra_lowvar_1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 1, max_time, var = var, rep = 50, burnin = 10)
+
+num_lowvar_1 %<>% mutate(type = "num")
+tra_lowvar_1 %<>% mutate(type = "tra")
+all_lowvar_1 = rbind(num_lowvar_1, tra_lowvar_1)
+
+# Medium var
+
+var = 2
+num_midvar_1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 0, max_time, var = var, rep = 50, burnin = 10)
+tra_midvar_1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 1, max_time, var = var, rep = 50, burnin = 10)
+
+num_midvar_1 %<>% mutate(type = "num")
+tra_midvar_1 %<>% mutate(type = "tra")
+all_midvar_1 = rbind(num_midvar_1, tra_midvar_1)
+
+# High var
+
+var = 8
+num_highvar_1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 0, max_time, var = var, rep = 50, burnin = 10)
+tra_highvar_1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 1, max_time, var = var, rep = 50, burnin = 10)
+
+num_highvar_1 %<>% mutate(type = "num")
+tra_highvar_1 %<>% mutate(type = "tra")
+all_highvar_1 = rbind(num_highvar_1, tra_highvar_1)
+
+```
+
+- Scenario 2
+
+```{r}
+
+# Scenario 2
+
+# Low var
+
+var = 0.5
+num_lowvar_2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 0, max_time, var = var, rep = 50)
+tra_lowvar_2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 1, max_time, var = var, rep = 50)
+
+num_lowvar_2 %<>% mutate(type = "num")
+tra_lowvar_2 %<>% mutate(type = "tra")
+all_lowvar_2 = rbind(num_lowvar_2, tra_lowvar_2)
+
+# Medium var
+
+var = 2
+num_midvar_2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 0, max_time, var = var, rep = 50)
+tra_midvar_2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 1, max_time, var = var, rep = 50)
+
+num_midvar_2 %<>% mutate(type = "num")
+tra_midvar_2 %<>% mutate(type = "tra")
+all_midvar_2 = rbind(num_midvar_2, tra_midvar_2)
+
+# High var
+
+var = 8
+num_highvar_2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 0, max_time, var = var, rep = 50)
+tra_highvar_2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
+                         lambda, intra, B, scal, 1, max_time, var = var, rep = 50)
+
+num_highvar_2 %<>% mutate(type = "num")
+tra_highvar_2 %<>% mutate(type = "tra")
+all_highvar_2 = rbind(num_highvar_2, tra_highvar_2)
+
+```
+
+# Figures in the Main Text
+
+## Population Dynamics
+
 - Plotting
 
 ```{r}
 
-# Scenario 1-Figure 2
+# Scenario 1
 
-rbind(lowdisp, highdisp) %>% filter(patch == 5) %>% 
+# p_pop_1 =
+rbind(lowdisp_1, highdisp_1) %>% filter(patch == 5) %>% 
   ggplot(aes(x = time, y = log(population+1), color = species, linetype = rep)) + geom_line(alpha = 0.3) +
   theme_bw() + xlab("Season") + ylab("log(Population+1)") + 
   scale_color_manual(values = color_scheme) +
@@ -210,8 +357,9 @@ rbind(lowdisp, highdisp) %>% filter(patch == 5) %>%
         panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
         strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
 
-# Scenario 2-Figure S4
+# Scenario 2
 
+# p_pop_2 =
 rbind(lowdisp_2, highdisp_2) %>% filter(patch == 5) %>% 
   ggplot(aes(x = time, y = log(population+1), color = species, linetype = rep)) + geom_line(alpha = 0.3) +
   theme_bw() + xlab("Season") + ylab("log(Population+1)") + 
@@ -229,18 +377,92 @@ rbind(lowdisp_2, highdisp_2) %>% filter(patch == 5) %>%
 
 ```
 
-## Final Occupancy
+```{r, eval = F}
 
-The following chunk plots final occupancy of the dominant species in each repetition, defined as the proportion of patches in which the regionally dominant species has the highest population; the regional dominant species is determined as the species that has the highest regional population for each repetition. This chunk produces Figure 3.
+ggsave("Figures/Fig3.pdf", plot = p_pop_1, width = 2700, height = 1800, units = "px")
+ggsave("Figures/Fig4.pdf", plot = p_pop_2, width = 2700, height = 1800, units = "px")
 
-This chunk uses data generated by the previous section.
+# If working with medium intraspecific competition
+# ggsave("Figures/FigS8.png", plot = p_pop_1, width = 2700, height = 1800, units = "px")
+# ggsave("Figures/FigS9.png", plot = p_pop_2, width = 2700, height = 1800, units = "px")
+
+# If working with high intraspecific competition
+# ggsave("Figures/FigS11.png", plot = p_pop_2, width = 2700, height = 1800, units = "px")
+# ggsave("Figures/FigS12.png", plot = p_pop_2, width = 2700, height = 1800, units = "px")
+
+```
+
+## Dispersal-Diversity Relationships
+
+- Plotting
 
 ```{r}
 
-all_pop_dynamics = rbind(lowdisp %>% filter(time == 110) %>% mutate(init_cond = "single_spp"), 
-                         highdisp %>% filter(time == 110) %>% mutate(init_cond = "single_spp"), 
-                         lowdisp_2 %>% filter(time == 110) %>% mutate(init_cond = "equal_pop"), 
-                         highdisp_2 %>% filter(time == 110) %>% mutate(init_cond = "equal_pop"))
+# p_dispdiv =
+rbind(mutate(all_Sce1, init_cond = "equal_pop"), 
+      mutate(all_Sce2, init_cond = "single_spp")) %>% 
+  pivot_longer(cols = 2:4, names_to = "metric", values_to = "value") %>% 
+  ggplot(aes(x = disp_rate, y = value, color = type, fill = type)) + geom_smooth() +
+  theme_bw() + xlab("Dispersal rate") + ylab("Value") + 
+  scale_x_continuous(breaks = c(0, 0.05, 0.1), labels = c("0", "0.05", "0.1")) +
+  scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
+  scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
+  facet_grid(metric ~ init_cond, scales = "free_y", 
+             labeller = labeller(metric = c(alpha = "Alpha (Simpson's)", beta = "Beta (Bray-Curtis)", gamma = "Gamma (Simpson's)"),
+                                 init_cond = c(equal_pop = "1. Equal Initials", single_spp = "2. First Colonizer"))) + 
+  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
+        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
+        panel.grid.minor = element_blank(), 
+        panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
+        strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
+
+```
+
+```{r, eval = F}
+
+ggsave("Figures/Fig5.pdf", plot = p_dispdiv, width = 1800, height = 2400, units = "px")
+
+# If working with medium intraspecific competition
+# ggsave("Figures/FigS9.png", plot = p_dispdiv, width = 1800, height = 2400, units = "px")
+
+# If working with high intraspecific competition
+# ggsave("Figures/FigS12.png", plot = p_dispdiv, width = 1800, height = 2400, units = "px")
+
+# If working with 10 species
+# ggsave("Figures/FigS5.png", plot = p_dispdiv, width = 1800, height = 2400, units = "px")
+
+```
+
+- Plotting for Presentation
+
+```{r}
+
+all_Sce2 %>% 
+  filter(type == "tra") %>%
+  ggplot(aes(x = disp_rate, y = gamma)) + 
+  geom_smooth(method = "loess", color = "#5A72D1", fill = "#5A72D1") +
+  geom_jitter(color = "#5A72D1") +
+  theme_bw() + 
+  ylim(0, 1) +
+  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title = element_blank(), 
+        panel.grid.minor = element_blank())
+
+```
+
+# Figures in the Appendix
+
+## Final Occupancy
+
+The following chunk plots final occupancy of the dominant species in each repetition, defined as the proportion of patches in which the regionally dominant species has the highest population; the regional dominant species is determined as the species that has the highest regional population for each repetition. This takes a while.
+
+```{r}
+
+all_pop_dynamics = rbind(lowdisp_1 %>% filter(time == 110) %>% mutate(init_cond = "equal_pop"), 
+                         highdisp_1 %>% filter(time == 110) %>% mutate(init_cond = "equal_pop"), 
+                         lowdisp_2 %>% filter(time == 110) %>% mutate(init_cond = "single_spp"), 
+                         highdisp_2 %>% filter(time == 110) %>% mutate(init_cond = "single_spp"))
 
 # Determine the species with highest total population (dominant species)
 
@@ -251,11 +473,14 @@ dom_spp = all_pop_dynamics %>% group_by(species, rep, type, disp_rate, init_cond
 
 # Species that has the highest population in each patch
 
-max_pop = all_pop_dynamics %>% group_by(patch, rep, type, disp_rate, init_cond) %>% filter(population == max(population))
+max_pop = all_pop_dynamics %>% 
+  group_by(patch, rep, type, disp_rate, init_cond) %>% 
+  filter(population == max(population))
 
 # Count how many times the dominant species is the species with the highest population in each repetition
 
 all_counts = data.frame()
+
 for (r in 1:50) {
   subset = dom_spp %>% filter(rep == r) # all dominant species
   for (i in 1:nrow(subset)) {
@@ -270,8 +495,6 @@ for (r in 1:50) {
   }
 }
 
-all_counts %<>% mutate(init_cond = fct_relevel(init_cond, "single_spp", "equal_pop"))
-
 # Calculate mean and standard deviation of occupancy data
 
 all_counts_summ = all_counts %>% group_by(type, disp_rate, init_cond) %>% 
@@ -279,6 +502,7 @@ all_counts_summ = all_counts %>% group_by(type, disp_rate, init_cond) %>%
 
 # Plotting
 
+p_dom =
 ggplot() + 
   geom_point(data = all_counts, aes(x = as.factor(disp_rate), y = occupancy, color = type), 
               alpha = 0.3, position = position_jitterdodge(jitter.width = 0.2)) +
@@ -288,12 +512,13 @@ ggplot() +
   geom_point(data = all_counts_summ, 
              aes(x = as.factor(disp_rate), y = mean, fill = type), 
              shape = 21, color = "black", size = 3, position = position_dodge(0.75)) + 
-  theme_bw() + xlab("Dispersal rate") + ylab("Occupancy of the\ndominant species") + #ylim(0, 1) +
+  theme_bw() + xlab("Dispersal rate") + ylab("Occupancy of the\nregionally most \nabundant species") + #ylim(0, 1) +
   scale_x_discrete(label = c("Low", "High")) +
+  ylim(0, 1) +
   scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
   scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
   facet_grid(. ~ init_cond, scales = "free_y", 
-             labeller = labeller(init_cond = c(single_spp = "1. Numeric advantage", equal_pop = "2. Equal initial"))) + 
+             labeller = labeller(init_cond = c(equal_pop = "1. Equal Initials", single_spp = "2. First Colonizer"))) + 
   theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
         axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
         legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
@@ -303,17 +528,70 @@ ggplot() +
 
 ```
 
-## Population at Differnt Times
+```{r, eval = F}
 
-The following chunks calculate population of each species of one randomly selected patch at different times of the simulation (Figure S2, S5, for Scenarios 1 and 2, respectively). 
+ggsave("Figures/FigS1.png", plot = p_dom, width = 1800, height = 1800, units = "px")
 
-This chunk uses data generated by the [Population Dynamics] section.
+```
+
+## Temporal Turnover
+
+The following chunks calculate and plots temporal turnover of metacommunity over fixed intervals using methods of Legendre (2019). The plotted dissimilarity index is the $D$ in Legendre 2019, which describes the collective effects of species gains and losses between two time points, excluding the first 10 seasons as burn-in. These chunks produce Figure 5.
+
+These chunks use data generated by the [Population Dynamics] section.
 
 ```{r}
 
-# Figure S3 (Scenario 1)
+tb_low_num1 = temporal_beta(num_lowdisp_1[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "num", disp_rate = 0.01)
+tb_low_tra1 = temporal_beta(tra_lowdisp_1[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "tra", disp_rate = 0.01)
+tb_high_num1 = temporal_beta(num_highdisp_1[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "num", disp_rate = 0.1)
+tb_high_tra1 = temporal_beta(tra_highdisp_1[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "tra", disp_rate = 0.1)
 
-rbind(lowdisp, highdisp) %>% filter(patch == 5 & 
+tb_Sce1 = rbind(tb_low_num1, tb_low_tra1, tb_high_num1, tb_high_tra1) %>% mutate(init_cond = "single_spp")
+
+tb_low_num2 = temporal_beta(num_lowdisp_2[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "num", disp_rate = 0.01)
+tb_low_tra2 = temporal_beta(tra_lowdisp_2[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "tra", disp_rate = 0.01)
+tb_high_num2 = temporal_beta(num_highdisp_2[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "num", disp_rate = 0.1)
+tb_high_tra2 = temporal_beta(tra_highdisp_2[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "tra", disp_rate = 0.1)
+
+tb_Sce2 = rbind(tb_low_num2, tb_low_tra2, tb_high_num2, tb_high_tra2) %>% mutate(init_cond = "equal_pop")
+
+# Plotting
+
+# p_tempdis = 
+rbind(tb_Sce1, tb_Sce2) %>% #mutate(init_cond = fct_relevel(init_cond, "single_spp", "equal_pop")) %>% 
+  ggplot(aes(x = time, y = D, color = type, fill = type)) + geom_smooth() + 
+  theme_bw() + xlab("Season") + ylab("Dissimilarity index") + ylim(0, 0.8) + 
+  scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
+  scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
+  facet_grid(disp_rate ~ init_cond, scales = "free_y", 
+             labeller = labeller(disp_rate = c(`0.01` = "Low r", `0.1` = "High r"),
+                                 init_cond = c(equal_pop = "1. Equal Initials", single_spp = "2. First Colonizer"))) + 
+  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
+        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
+        panel.grid.minor = element_blank(), 
+        panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
+        strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
+
+```
+
+```{r, eval = F}
+
+ggsave("Figures/FigS2.png", plot = p_tempdis, width = 1800, height = 1800, units = "px")
+
+```
+
+## Population at Different Times
+
+The following chunks calculate population of each species of one randomly selected patch at different times of the simulation. 
+
+```{r}
+
+# Scenario 1
+
+# p_poptime_1 = 
+rbind(lowdisp_1, highdisp_1) %>% filter(patch == 5 & 
                                     (time == 35 | time == 60 | time == 85 | time == 110)) %>% #season_length*n_seasons+10
   ggplot(aes(x = as.factor(time), y = log(population+1), fill = species)) + geom_boxplot() + 
   theme_bw() + xlab("Season") + ylab("log(Population+1)") +
@@ -328,8 +606,9 @@ rbind(lowdisp, highdisp) %>% filter(patch == 5 &
         panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
         strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
 
-# Figure S5 (Scenario 2)
+# Scenario 2
 
+# p_poptime_2 = 
 rbind(lowdisp_2, highdisp_2) %>% filter(patch == 5 & 
                                     (time == 35 | time == 60 | time == 85 | time == 110)) %>% #season_length*n_seasons+10
   ggplot(aes(x = as.factor(time), y = log(population+1), fill = species)) + geom_boxplot() + theme_bw() +
@@ -347,181 +626,25 @@ rbind(lowdisp_2, highdisp_2) %>% filter(patch == 5 &
 
 ```
 
-## Dispersal-Diversity Relationships
+```{r, eval = F}
 
-The following chunks produce figures of dispersal-diversity relationships under two initial scenarios (Figure 4). For analyses using other intraspecific competition coefficients (Figure S10, S13), change the `intra` values below accordingly. After simulations, make sure to reset `intra` to the default value (0.07) before running other simulations.
-
-- Generate Data
-
-This takes a while.
-
-```{r}
-
-# Low intra (shown in the main text)
-
-intra = rep(0.07, 5)
-
-# Medium intra (shown in Appendix II, Figure S8-1S0)
-
-# intra = rep(0.10, 5)
-
-# High intra (shown in Appendix II, Figure S11-S13)
-
-# intra = rep(0.15, 5)
-
-disp_rates_lst = c(0.001, 0.005, seq(0.01, 0.1, 0.01))
-
-# Scenario 1
-
-num_Sce1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 0, max_time, var = var, rep = 50, burnin = 10)
-tra_Sce1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 1, max_time, var = var, rep = 50, burnin = 10)
-
-num_Sce1 %<>% mutate(type = "num")
-tra_Sce1 %<>% mutate(type = "tra")
-all_Sce1 = rbind(num_Sce1, tra_Sce1)
-
-# Scenario 2
-
-num_Sce2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 0, max_time, var = var, rep = 50)
-tra_Sce2 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 1, max_time, var = var, rep = 50)
-
-num_Sce2 %<>% mutate(type = "num")
-tra_Sce2 %<>% mutate(type = "tra")
-all_Sce2 = rbind(num_Sce2, tra_Sce2)# %>% pivot_longer(cols = 2:4, names_to = "metric", values_to = "values")
-
-```
-
-- Plotting
-
-```{r}
-
-rbind(mutate(all_Sce1, init_cond = "single_spp"), 
-      mutate(all_Sce2, init_cond = "equal_pop")) %>% mutate(init_cond = fct_relevel(init_cond, "single_spp", "equal_pop")) %>% 
-  pivot_longer(cols = 2:4, names_to = "metric", values_to = "value") %>% 
-  ggplot(aes(x = disp_rate, y = value, color = type, fill = type)) + geom_smooth() +
-  theme_bw() + xlab("Dispersal rate") + ylab("Value") + 
-  scale_x_continuous(breaks = c(0, 0.05, 0.1), labels = c("0", "0.05", "0.1")) +
-  scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
-  scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
-  facet_grid(metric ~ init_cond, scales = "free_y", 
-             labeller = labeller(metric = c(alpha = "Alpha", beta = "Beta", gamma = "Gamma"),
-                                 init_cond = c(single_spp = "1. Numeric advantage", equal_pop = "2. Equal initial"))) + 
-  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
-        axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
-        panel.grid.minor = element_blank(), 
-        panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
-        strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
+ggsave("Figures/FigS3.png", plot = p_poptime_1, width = 2700, height = 1800, units = "px")
+ggsave("Figures/FigS4.png", plot = p_poptime_2, width = 2700, height = 1800, units = "px")
 
 ```
 
 ## Effects of Variation
 
-The following chunks generate figures that show how dispersal-diversity relationships are affected by the magnitude of seasonal variations (Figure S3, S6 for Scenarios 1 and 2, respectively).
-
-- Generate Data
-
-This takes a while.
+The following chunks generate figures that show how dispersal-diversity relationships are affected by the magnitude of seasonal variations.
 
 ```{r}
 
 # Scenario 1
 
-# Low var
-
-var = 0.5
-num_var1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 0, max_time, var = var, rep = 50, burnin = 10)
-tra_var1 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 1, max_time, var = var, rep = 50, burnin = 10)
-
-num_var1 %<>% mutate(type = "num")
-tra_var1 %<>% mutate(type = "tra")
-all_var1 = rbind(num_var1, tra_var1)# %>% pivot_longer(cols = 2:4, names_to = "metric", values_to = "values")
-
-# Medium var
-
-var = 2
-
-num_var2 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 0, max_time, var = var, rep = 50, burnin = 10)
-tra_var2 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 1, max_time, var = var, rep = 50, burnin = 10)
-
-num_var2 %<>% mutate(type = "num")
-tra_var2 %<>% mutate(type = "tra")
-all_var2 = rbind(num_var2, tra_var2)# %>% pivot_longer(cols = 2:4, names_to = "metric", values_to = "values")
-
-# High var
-
-var = 8
-
-num_var3 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 0, max_time, var = var, rep = 50, burnin = 10)
-tra_var3 = multiple_disp(M_1, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 1, max_time, var = var, rep = 50, burnin = 10)
-
-num_var3 %<>% mutate(type = "num")
-tra_var3 %<>% mutate(type = "tra")
-all_var3 = rbind(num_var3, tra_var3)# %>% pivot_longer(cols = 2:4, names_to = "metric", values_to = "values")
-
-```
-
-```{r}
-
-# Scenario 2
-
-# Low var
-
-var = 0.5
-num_var12 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 0, max_time, var = var, rep = 50)
-tra_var12 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 1, max_time, var = var, rep = 50)
-
-num_var12 %<>% mutate(type = "num")
-tra_var12 %<>% mutate(type = "tra")
-all_var12 = rbind(num_var12, tra_var12)# %>% pivot_longer(cols = 2:4, names_to = "metric", values_to = "values")
-
-# Medium var
-
-var = 2
-num_var22 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 0, max_time, var = var, rep = 50)
-tra_var22 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 1, max_time, var = var, rep = 50)
-
-num_var22 %<>% mutate(type = "num")
-tra_var22 %<>% mutate(type = "tra")
-all_var22 = rbind(num_var22, tra_var22)# %>% pivot_longer(cols = 2:4, names_to = "metric", values_to = "values")
-
-# High var
-
-var = 8
-num_var32 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 0, max_time, var = var, rep = 50)
-tra_var32 = multiple_disp(M_2, season_length, n_seasons, disp_rates_lst, c(50), disp_freq, disp_freq_seasons,
-                         lambda, intra, B, scal, xmid, 1, max_time, var = var, rep = 50)
-
-num_var32 %<>% mutate(type = "num")
-tra_var32 %<>% mutate(type = "tra")
-all_var32 = rbind(num_var32, tra_var32)# %>% pivot_longer(cols = 2:4, names_to = "metric", values_to = "values")
-
-```
-
-- Plotting
-
-```{r}
-
-# Scenario 1
-
-rbind(mutate(all_var1, var = as.factor(0.5)), 
-      mutate(all_var2, var = as.factor(2)), 
-      mutate(all_var3, var = as.factor(8))) %>%
+# p_ddvar_1 = 
+rbind(mutate(all_lowvar_1, var = as.factor(0.5)), 
+      mutate(all_midvar_1, var = as.factor(2)), 
+      mutate(all_highvar_1, var = as.factor(8))) %>%
   pivot_longer(cols = 2:4, names_to = "metric", values_to = "value") %>% 
   ggplot(aes(x = disp_rate, y = value, color = type, fill = type)) + geom_smooth() +
   theme_bw() + xlab("Dispersal rate") + ylab("Value") + 
@@ -529,7 +652,29 @@ rbind(mutate(all_var1, var = as.factor(0.5)),
   scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
   scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
   facet_grid(metric ~ var, scales = "free_y", 
-             labeller = labeller(metric = c(alpha = "Alpha", beta = "Beta", gamma = "Gamma"),
+             labeller = labeller(metric = c(alpha = "Alpha (Simpson's)", beta = "Beta (Bray-Curtis)", gamma = "Gamma (Simpson's)"),
+                                 var = c(`0.5` = "Small", `2` = "Medium", `8` = "Large"))) + 
+  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
+        axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
+        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
+        panel.grid.minor = element_blank(), 
+        panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
+        strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
+
+# Scenario 2
+
+# p_ddvar_2 = 
+rbind(mutate(all_lowvar_2, var = as.factor(0.5)), 
+      mutate(all_midvar_2, var = as.factor(2)), 
+      mutate(all_highvar_2, var = as.factor(8))) %>%
+  pivot_longer(cols = 2:4, names_to = "metric", values_to = "value") %>% 
+  ggplot(aes(x = disp_rate, y = value, color = type, fill = type)) + geom_smooth() +
+  theme_bw() + xlab("Dispersal rate") + ylab("Value") + 
+  scale_x_continuous(breaks = c(0, 0.05, 0.1), labels = c("0", "0.05", "0.1")) +
+  scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
+  scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
+  facet_grid(metric ~ var, scales = "free_y", 
+             labeller = labeller(metric = c(alpha = "Alpha (Simpson's)", beta = "Beta (Bray-Curtis)", gamma = "Gamma (Simpson's)"),
                                  var = c(`0.5` = "Small", `2` = "Medium", `8` = "Large"))) + 
   theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
         axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
@@ -540,68 +685,9 @@ rbind(mutate(all_var1, var = as.factor(0.5)),
 
 ```
 
-```{r}
+```{r, eval = F}
 
-# Scenario 2
-
-rbind(mutate(all_var12, var = as.factor(0.5)), 
-      mutate(all_var22, var = as.factor(2)), 
-      mutate(all_var32, var = as.factor(8))) %>%
-  pivot_longer(cols = 2:4, names_to = "metric", values_to = "value") %>% 
-  ggplot(aes(x = disp_rate, y = value, color = type, fill = type)) + geom_smooth() +
-  theme_bw() + xlab("Dispersal rate") + ylab("Value") + 
-  scale_x_continuous(breaks = c(0, 0.05, 0.1), labels = c("0", "0.05", "0.1")) +
-  scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
-  scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) + 
-  facet_grid(metric ~ var, scales = "free_y", 
-             labeller = labeller(metric = c(alpha = "Alpha", beta = "Beta", gamma = "Gamma"),
-                                 var = c(`0.5` = "Small", `2` = "Medium", `8` = "Large"))) + 
-  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
-        axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
-        panel.grid.minor = element_blank(), 
-        panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
-        strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
-
-```
-
-## Temporal Turnover
-
-The following chunks calculate and plots temporal turnover of metacommunity over fixed intervals using methods of Legendre (2019). The plotted dissimilarity index is the $D$ in Legendre 2019, which describes the collective effects of species gains and losses between two time points, excluding the first 10 seasons as burn-in. These chunks produce Figure 5.
-
-These chunks use data generated by the [Population Dynamics] section.
-
-```{r}
-
-tb_low_num1 = temporal_beta(num_lowdisp[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "num", disp_rate = 0.01)
-tb_low_tra1 = temporal_beta(tra_lowdisp[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "tra", disp_rate = 0.01)
-tb_high_num1 = temporal_beta(num_highdisp[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "num", disp_rate = 0.1)
-tb_high_tra1 = temporal_beta(tra_highdisp[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "tra", disp_rate = 0.1)
-
-tb_Sce1 = rbind(tb_low_num1, tb_low_tra1, tb_high_num1, tb_high_tra1) %>% mutate(init_cond = "single_spp")
-
-tb_low_num2 = temporal_beta(num_lowdisp_2[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "num", disp_rate = 0.01)
-tb_low_tra2 = temporal_beta(tra_lowdisp_2[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "tra", disp_rate = 0.01)
-tb_high_num2 = temporal_beta(num_highdisp_2[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "num", disp_rate = 0.1)
-tb_high_tra2 = temporal_beta(tra_highdisp_2[[1]], step = 10) %>% filter(time > 20) %>% mutate(type = "tra", disp_rate = 0.1)
-
-tb_Sce2 = rbind(tb_low_num2, tb_low_tra2, tb_high_num2, tb_high_tra2) %>% mutate(init_cond = "equal_pop")
-
-# Plotting
-
-rbind(tb_Sce1, tb_Sce2) %>% mutate(init_cond = fct_relevel(init_cond, "single_spp", "equal_pop")) %>% 
-  ggplot(aes(x = time, y = D, color = type, fill = type)) + geom_smooth() + 
-  theme_bw() + xlab("Season") + ylab("Dissimilarity index") + ylim(0, 0.8) + 
-  scale_color_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
-  scale_fill_manual(values = c("#5A72D1", "#D97437"), labels = c("No trait-mediated", "Trait-mediated")) +
-  facet_grid(disp_rate ~ init_cond, scales = "free_y", 
-             labeller = labeller(disp_rate = c(`0.01` = "Low r", `0.1` = "High r"),
-                                 init_cond = c(single_spp = "1. Numeric advantage", equal_pop = "2. Equal initial"))) +
-  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
-        axis.title.y = element_text(size = 20), axis.title.x = element_text(size = 20), 
-        legend.text = element_text(size = 17), legend.title = element_blank(), legend.position = "bottom",
-        panel.grid.minor = element_blank(), 
-        panel.spacing.x = unit(1, "lines"), panel.spacing.y = unit(0.5, "lines"),
-        strip.text.x = element_text(size = 15), strip.text.y = element_text(size = 15))
+ggsave("Figures/FigS6.png", plot = p_ddvar_1, width = 2400, height = 2400, units = "px")
+ggsave("Figures/FigS7.png", plot = p_ddvar_2, width = 2400, height = 2400, units = "px")
 
 ```

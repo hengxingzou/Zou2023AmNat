@@ -3,15 +3,13 @@ library(magrittr)
 library(vegan)
 library(adespatial)
 library(reshape2)
-library(scatterpie)
 library(abind)
 library(patchwork)
-library(waffle)
-library(progress)
+library(foreach)
+library(doParallel)
+registerDoParallel(cores = 4)
 
 options(dplyr.summarise.inform = FALSE) # repress dplyr summarise() info
-
-pb = progress_bar$new(total = 50, width = 50) # progress bar in long simulations
 
 # Color Scheme
 
@@ -68,17 +66,16 @@ init_metacom = function(size, nspp, init_pop, each = F, random = F, seed = NULL)
 # Calculate Competition Coefficients
 # Input: B: the maximum of the sigmoidal scaling function (numeric)
 #        scal: scaling constant of the sigmoidal scaling function (numeric)
-#        xmid: midpoint of the sigmoidal scaling function (numeric)
 #        deltp: relative emergence time (numeric)
 #        type: type of priority effects (1 or 0)
 # Output: a competition coefficient (numeric)
 # If type == 1, priority effects are trait-mediated, and the competition coefficient is determined by deltp; 
 # if type == 0, priority effects are numeric, and the competition coefficient is constant and equals to B/2
 
-comp_coeff = function(B, scal, xmid, deltp, type) {
+comp_coeff = function(B, scal, deltp, type) {
   
   # Reciprocal scaling function assuming early-arrival advantage
-  if (type == 1) {return(B/(1+exp((xmid-deltp)/scal)))}
+  if (type == 1) {return(B/(1+exp((deltp)/scal)))}
   
   # Constant scaling function
   if (type == 0) {return(B/2)}
@@ -136,14 +133,13 @@ init_deltp_matrix = function(nspp, max_time, var, seed = NULL) {
 #        intra: intraspecific competition coefficients (vector)
 #        B: the maximum of the sigmoidal scaling function (numeric)
 #        scal: scaling constant of the sigmoidal scaling function (numeric)
-#        xmid: midpoint (numeric) of the sigmoidal scaling function
 #        type: type of priority effects (1 or 0)
 # Output: a matrix of pairwise competition coefficients (matrix)
 
-init_amat = function(nspp, deltp_matrix, intra, B, scal, xmid, type) {
+init_amat = function(nspp, deltp_matrix, intra, B, scal, type) {
   
   # Compute interspecific competition according to Eqn. 2
-  amat = apply(deltp_matrix, 1:2, function(x) comp_coeff(B, scal, xmid, x, type))
+  amat = apply(deltp_matrix, 1:2, function(x) comp_coeff(B, scal, x, type))
   
   # Set intraspecific competition as the diagonal
   diag(amat) = intra
@@ -235,7 +231,6 @@ dispersal = function(metacom_matrix, disp_rates, immi_patches) {
 #        intra: intraspecific competition coefficients (vector)
 #        B: the maximum of the sigmoidal scaling function (numeric)
 #        scal: scaling constant of the sigmoidal scaling function (numeric)
-#        xmid: midpoint of the sigmoidal scaling function (numeric)
 #        deltp: relative emergence time (numeric)
 #        type: type of priority effects (1 or 0)
 #        max_time: the maximum (latest) time of emergence (numeric)
@@ -248,7 +243,7 @@ dispersal = function(metacom_matrix, disp_rates, immi_patches) {
 
 seasons = function(metacom_matrix, season_length, n_seasons, # space and time
                    disp_rates, immi_patches, disp_freq, disp_freq_seasons = 1, # dispersal
-                   lambda, intra, B, scal, xmid, type, # vital rates
+                   lambda, intra, B, scal, type, # vital rates
                    max_time, var, n_disturb = 0, # delta p and disturbance
                    burnin = 0, seed = NULL) {
   
@@ -299,7 +294,7 @@ seasons = function(metacom_matrix, season_length, n_seasons, # space and time
       deltp_matrix = init_deltp_matrix(nspp, max_time, var, seed)
       if (t %in% seasons_tp) {out_deltp[, , patch, match(t, seasons_tp)] = deltp_matrix}
       else {deltp_matrix = deltp_matrix*0}
-      a_matrix = init_amat(nspp, deltp_matrix, intra, B, scal, xmid, type)
+      a_matrix = init_amat(nspp, deltp_matrix, intra, B, scal, type)
 
       # Run the Beverton-Holt model
       new_N = metacom_matrix[, patch]
@@ -356,7 +351,6 @@ seasons = function(metacom_matrix, season_length, n_seasons, # space and time
 #        intra: intraspecific competition coefficients (vector)
 #        B: the maximum of the sigmoidal scaling function (numeric)
 #        scal: scaling constant of the sigmoidal scaling function (numeric)
-#        xmid: midpoint of the sigmoidal scaling function (numeric)
 #        deltp: relative emergence time (numeric)
 #        type: type of priority effects (1 or 0)
 #        max_time: the maximum (latest) time of emergence (numeric)
@@ -371,7 +365,7 @@ seasons = function(metacom_matrix, season_length, n_seasons, # space and time
 
 multiple_reps = function(metacom_matrix, season_length, n_seasons, # space and time
                          disp_rates, immi_patches, disp_freq, disp_freq_seasons, # dispersal
-                         lambda, intra, B, scal, xmid, type, # vital rates
+                         lambda, intra, B, scal, type, # vital rates
                          max_time, var, rep, n_disturb = 0, # delta p and disturbance
                          burnin = 0, seed = NULL) {
   
@@ -386,7 +380,7 @@ multiple_reps = function(metacom_matrix, season_length, n_seasons, # space and t
   all_dynamics = array(dim = c(nspp, season_length*n_seasons+1, size, rep))
   all_deltp = array(dim = c(nspp, nspp, size, n_seasons, rep))
   all_disp = array(dim = c(nspp, n_seasons*disp_freq+1, rep))
-  
+
   for (r in 1:rep) {
     
     # Randomly draw a intraspecific competition coefficient from a normal distribution
@@ -395,7 +389,7 @@ multiple_reps = function(metacom_matrix, season_length, n_seasons, # space and t
     # Run simulations
     dynamics = seasons(metacom_matrix, season_length, n_seasons, 
                        disp_rates, immi_patches, disp_freq, disp_freq_seasons, 
-                       lambda, new_intra, B, scal, xmid, type, 
+                       lambda, new_intra, B, scal, type, 
                        max_time, var, n_disturb, burnin, seed)
     
     # Record results
@@ -526,7 +520,6 @@ temporal_beta = function(all_dynamics, step) {
 #        intra: intraspecific competition coefficients (vector)
 #        B: the maximum of the sigmoidal scaling function (numeric)
 #        scal: scaling constant of the sigmoidal scaling function (numeric)
-#        xmid: midpoint of the sigmoidal scaling function (numeric)
 #        deltp: relative emergence time (numeric)
 #        type: type of priority effects (1 or 0)
 #        max_time: the maximum (latest) time of emergence (numeric)
@@ -538,7 +531,7 @@ temporal_beta = function(all_dynamics, step) {
 
 multiple_disp = function(metacom_matrix, season_length, n_seasons, # space and time
                          disp_rates_lst, immi_patches_lst, disp_freq, disp_freq_seasons = 1, # dispersal
-                         lambda, intra, B, scal, xmid, type, # vital rates
+                         lambda, intra, B, scal, type, # vital rates
                          max_time, var = 0, rep, n_disturb = 0, 
                          burnin = 0, seed = NULL) {
   
@@ -554,7 +547,7 @@ multiple_disp = function(metacom_matrix, season_length, n_seasons, # space and t
       # Run simulations
       res = multiple_reps(metacom_matrix, season_length, n_seasons, 
                           disp_rates = rep(d, nspp), immi_patches = i, disp_freq, disp_freq_seasons,
-                          lambda, intra, B, scal, xmid, type, 
+                          lambda, intra, B, scal, type, 
                           max_time, var = var, rep = rep, n_disturb = n_disturb, burnin = burnin, seed = seed)[[1]]
       
       local = alphadiv(res)
@@ -572,116 +565,4 @@ multiple_disp = function(metacom_matrix, season_length, n_seasons, # space and t
   
   return(all_out)
 }
-
-
-########## UNUSED FUNCTIONS ##########
-
-
-met_df = function(dynamics) {
-  out = plyr::adply(dynamics, c(1, 2, 3))
-  colnames(out) = c("species", "time", "patch", "population")
-  out$time = as.numeric(out$time)-1
-  return(out)
-}
-
-
-temporal_beta_ori = function(dynamics, step) {
-  bcd = tibble()
-  tp = seq(1, dim(dynamics)[2], step)
-  for (i in 2:(length(tp))) {
-    b = TBI(t(dynamics[, tp[1], , 1]), t(dynamics[, tp[i], , 1]))
-    avg_B = mean(b$BCD.mat[, 1])
-    avg_C = mean(b$BCD.mat[, 2])
-    avg_D = mean(b$BCD.mat[, 3])
-    bcd = rbind(bcd, tibble(B = avg_B, C = avg_C, D = avg_D, time = (i-1)*10))
-  }
-  return(bcd)
-}
-
-# Calculating Final Population *Only used in old analyses
-# Input: array of population dynamics from multiple_reps and the range of calculation (regional; default to T, calculating
-#        regional final population of each species; if F, calculate final population by each patch)
-# Output: a data frame of log-transformed final population of all repetitions
-
-final_pop = function(all_dynamics, regional = T) {
-  
-  # Get the end metacommunity of all simulations
-  end_time = dim(all_dynamics)[2]
-  end_array = all_dynamics[, end_time, , ]
-  
-  # Transform into data frame
-  out = plyr::adply(end_array, c(1, 2, 3))
-  colnames(out) = c("species", "patch", "rep", "population")
-  
-  # Whether calculate regional final population
-  if (regional) {
-    out %<>% group_by(species, rep) %>% summarize(population = sum(population))
-  }
-  
-  # Transform by natural log
-  out %<>% mutate(population = log(population+1))
-  
-  return(out)
-}
-
-
-sppnumber = function(all_dynamics, regional = F) {
-  end_time = dim(all_dynamics)[2]
-  end_array = all_dynamics[, end_time, , ]
-  end_pop = plyr::adply(end_array, c(1, 2, 3))
-  colnames(end_pop) = c("species", "patch", "rep", "population")
-  end_pop %<>% filter(population > 1e-5) # threshold for extinction
-  if (regional) {
-    richness = end_pop %>% group_by(rep) %>% summarize(richness = n_distinct(species))
-  } else {
-    richness = end_pop %>% group_by(patch, rep) %>% summarize(richness = n_distinct(species)) %>% ungroup() %>%
-      group_by(rep) %>% summarize(richness = mean(richness))
-  }
-  return(richness)
-}
-
-# Dynamics of One Season
-# Input: metacommunity matrix (metacom_matrix; matrix), number of generations (generation; integer), intrinsic growth rates
-#        of all species (lambda), survival into next generation of all species (surv; vector), intraspecific competition
-#        coefficients (intra; vector), the maximum (B; numeric), scaling constant (scal; numeric) and midpoint (xmid; numeric) 
-#        of the sigmoidal scaling function, type of priority effects (type; 1 or 0), the maximum (latest) time of emergence (max_time; numeric), 
-#        variation around mean times of emergence (var; numeric), whether intervals between species are evenly split 
-#        (even; default to T) and optional random seed (seed; integer, default to NULL)
-# Output: a list of two items: population dynamics over time (out; array with dimensions: number of species, generation, number of patches)
-#         and all pairwise delta p over time (out_deltp; array with dimensions: number of species, number of species, generation)
-
-one_season = function(metacom_matrix, generation, # space and time
-                      lambda, surv, intra, B, scal, xmid, type, # vital rates
-                      max_time, var, seed = NULL) { # delta p
-  
-  # Extract size and number of species from the input metacommunity
-  size = ncol(metacom_matrix)
-  nspp = nrow(metacom_matrix)
-  
-  # Set up the array for recording population dynamics
-  out = array(NA, dim = c(nspp, generation+1, size), dimnames = list(1:nspp, 1:(generation+1), 1:size))
-  out[, 1, ] = metacom_matrix
-  
-  # Set up the array for recording actual emergence times
-  out_deltp = array(NA, dim = c(nspp, nspp, size), dimnames = list(1:nspp, 1:nspp, 1:size))
-  
-  for (patch in 1:size) {
-    new_N = metacom_matrix[, patch]
-    
-    # Construct and store the matrix of relative emergence times
-    deltp_matrix = init_deltp_matrix(nspp, max_time, var, seed)
-    out_deltp[, , patch] = deltp_matrix
-    
-    # Run the model for one season
-    for (t in 2:(generation+1)) {
-      a_matrix = init_amat(nspp, deltp_matrix, intra, B, scal, xmid, type)
-      new_N = competition(new_N, a_matrix, lambda)
-      out[, t, patch] = new_N
-      deltp_matrix = deltp_matrix*0
-    }
-  }
-  
-  return(list(out, out_deltp))
-}
-
 
