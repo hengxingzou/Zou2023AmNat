@@ -291,8 +291,6 @@ all_highvar_1 = rbind(num_highvar_1, tra_highvar_1)
 
 ```{r}
 
-# Scenario 2
-
 # Low var
 
 var = 0.5
@@ -431,23 +429,6 @@ ggsave("Figures/Fig5.pdf", plot = p_dispdiv, width = 1800, height = 2400, units 
 
 # If working with 10 species
 # ggsave("Figures/FigS5.png", plot = p_dispdiv, width = 1800, height = 2400, units = "px")
-
-```
-
-- Plotting for Presentation
-
-```{r}
-
-all_Sce2 %>% 
-  filter(type == "tra") %>%
-  ggplot(aes(x = disp_rate, y = gamma)) + 
-  geom_smooth(method = "loess", color = "#5A72D1", fill = "#5A72D1") +
-  geom_jitter(color = "#5A72D1") +
-  theme_bw() + 
-  ylim(0, 1) +
-  theme(axis.text.y = element_text(size = 15), axis.text.x = element_text(size = 15), axis.ticks = element_blank(), 
-        axis.title = element_blank(), 
-        panel.grid.minor = element_blank())
 
 ```
 
