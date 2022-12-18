@@ -20,6 +20,7 @@ The arrival order of species frequently determines the outcome of their interact
 
 # Reproducing Figures
 
-- Make sure all files are under the same directory.
+- Unarchive the provided `SavedMetacoms.zip`.
+- Make sure all files, including the `SavedMetacoms` folder, are under the same directory.
 - Open `FiguresReadMe.Rmd`, then load `Dec17_5spp.RData`.
 - Follow specific instructions in `FiguresReadMe.Rmd` to generate figures in the main text, or change model parameters to produce figures in the appendix.
