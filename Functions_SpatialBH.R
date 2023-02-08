@@ -5,9 +5,6 @@ library(adespatial)
 library(reshape2)
 library(abind)
 library(patchwork)
-library(foreach)
-library(doParallel)
-registerDoParallel(cores = 4)
 
 options(dplyr.summarise.inform = FALSE) # repress dplyr summarise() info
 
@@ -69,8 +66,8 @@ init_metacom = function(size, nspp, init_pop, each = F, random = F, seed = NULL)
 #        deltp: relative emergence time (numeric)
 #        type: type of priority effects (1 or 0)
 # Output: a competition coefficient (numeric)
-# If type == 1, priority effects are trait-mediated, and the competition coefficient is determined by deltp; 
-# if type == 0, priority effects are numeric, and the competition coefficient is constant and equals to B/2
+# If type == 1, priority effects are trait-dependent, and the competition coefficient is determined by deltp; 
+# if type == 0, priority effects are frequency-dependent, and the competition coefficient is constant and equals to B/2
 
 comp_coeff = function(B, scal, deltp, type) {
   
