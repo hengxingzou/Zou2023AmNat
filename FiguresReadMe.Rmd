@@ -33,7 +33,7 @@ where population of the next season is determined by density-dependent populatio
 
 $$
 
-\alpha_{ij} = \frac{B}{1+\exp({(d-\Delta p_{ij})/c})}
+\alpha_{ij} = \frac{B}{1+\exp({-\Delta p_{ij}/c})}
 
 $$
 
