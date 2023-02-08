@@ -12,6 +12,8 @@ The arrival order of species frequently determines the outcome of their interact
 
 # Code Files
 
+All simulations were run in R version 4.2.1.
+
 - `Functions_SpatialBH.R` contains all functions used for contructing the model and running simulations. 
 - `FiguresReadMe.Rmd` contains all code for generating figures in the main text and the appendix. Running any portion of this file will automatically run `Functins_SpatialBH.R`. Note that running all simulations takes a long time; we therefore do not recommend knitting this file. Instead, we have provided a `.RData` file that contains all generated data.
 
