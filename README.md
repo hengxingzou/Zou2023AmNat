@@ -1,8 +1,8 @@
 This repository contains public code for the manuscript:
 
-Zou, Heng-Xing, and Volker HW Rudolf. "Priority effects determine how dispersal affects biodiversity in seasonal metacommunities." bioRXiv (2022). [https://doi.org/10.1101/2022.02.03.479022](https://doi.org/10.1101/2022.02.03.479022)
+Zou, Heng-Xing, and Volker HW Rudolf. 2023. "Priority effects determine how dispersal affects biodiversity in seasonal metacommunities." *The American Naturalist*.[https://doi.org/10.1086/725039](https://doi.org/10.1086/725039)
 
-This manuscript has been accepted by *The American Naturalist*.
+You can also download the code and data from [Dryad](https://doi.org/10.5061/dryad.sbcc2frb4).
 
 For any questions, please [contact Heng-Xing Zou](hengxingzou@rice.edu)
 
